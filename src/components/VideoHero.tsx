@@ -18,40 +18,46 @@ const VideoHero: React.FC = () => {
 
   // Scroll logic
   useEffect(() => {
-    let rafId: number;
+    let ticking = false;
     let latestProgress = 0;
 
-    const handleScroll = () => {
-      if (!containerRef.current || !videoRef.current) return;
-
-      const rect = containerRef.current.getBoundingClientRect();
-      const scrollY = -rect.top;
-      const totalScroll = containerRef.current.offsetHeight - window.innerHeight;
-      latestProgress = Math.max(0, Math.min(1, scrollY / totalScroll));
-      setScrollProgress(latestProgress);
-    };
-
-    const tick = () => {
-      if (videoRef.current?.duration) {
+    const updateVideo = () => {
+      if (videoRef.current && videoRef.current.duration) {
         const targetTime = latestProgress * videoRef.current.duration;
         // Optimization: only update if the difference is significant
         if (Math.abs(videoRef.current.currentTime - targetTime) > 0.001) {
           videoRef.current.currentTime = targetTime;
         }
       }
-      rafId = requestAnimationFrame(tick);
+      ticking = false;
+    };
+
+    const handleScroll = () => {
+      if (!containerRef.current) return;
+
+      const rect = containerRef.current.getBoundingClientRect();
+      const scrollY = -rect.top;
+      const totalScroll = containerRef.current.offsetHeight - window.innerHeight;
+      latestProgress = Math.max(0, Math.min(1, scrollY / totalScroll));
+      setScrollProgress(latestProgress);
+
+      if (!ticking) {
+        requestAnimationFrame(updateVideo);
+        ticking = true;
+      }
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
-    rafId = requestAnimationFrame(tick); // 1 loop duy nhất, chạy liên tục
-
     return () => {
       window.removeEventListener('scroll', handleScroll);
-      cancelAnimationFrame(rafId);
     };
-  }, []);  // ✅ bỏ isLoaded dependency
+  }, []);
 
   const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
     setIsLoaded(true);
   };
 

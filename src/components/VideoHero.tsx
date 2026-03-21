@@ -31,8 +31,10 @@ const VideoHero: React.FC = () => {
     };
 
     const tick = () => {
-      if (videoRef.current?.duration) {
-        videoRef.current.currentTime = latestProgress * videoRef.current.duration;
+      if (videoRef.current && videoRef.current.duration) {
+        // Clamp to slightly before duration to avoid potential reset/loop behavior at the exact end
+        const targetTime = Math.min(latestProgress * videoRef.current.duration, videoRef.current.duration - 0.1);
+        videoRef.current.currentTime = targetTime;
       }
       rafId = requestAnimationFrame(tick);
     };
@@ -47,6 +49,9 @@ const VideoHero: React.FC = () => {
   }, []);
 
   const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      videoRef.current.pause();
+    }
     setIsLoaded(true);
   };
 

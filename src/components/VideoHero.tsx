@@ -87,7 +87,7 @@ const VideoHero: React.FC = () => {
           </div>
 
           {/* Left: Badges Overlay */}
-          <div className="absolute left-8 md:left-20 top-1/3 -translate-y-1/2 flex flex-col gap-4 items-start pointer-events-auto" suppressHydrationWarning>
+          <div className="absolute left-8 md:left-20 top-4/5 -translate-y-1/2 flex flex-col gap-4 items-start pointer-events-auto" suppressHydrationWarning>
             {badges.map((text, i) => {
               const threshold = 0.03 + i * 0.03;
               const isVisible = scrollProgress > threshold;

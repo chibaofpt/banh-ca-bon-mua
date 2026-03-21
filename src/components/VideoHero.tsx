@@ -18,46 +18,35 @@ const VideoHero: React.FC = () => {
 
   // Scroll logic
   useEffect(() => {
-    let ticking = false;
+    let rafId: number;
     let latestProgress = 0;
-
-    const updateVideo = () => {
-      if (videoRef.current && videoRef.current.duration) {
-        const targetTime = latestProgress * videoRef.current.duration;
-        // Optimization: only update if the difference is significant
-        if (Math.abs(videoRef.current.currentTime - targetTime) > 0.001) {
-          videoRef.current.currentTime = targetTime;
-        }
-      }
-      ticking = false;
-    };
 
     const handleScroll = () => {
       if (!containerRef.current) return;
-
       const rect = containerRef.current.getBoundingClientRect();
       const scrollY = -rect.top;
       const totalScroll = containerRef.current.offsetHeight - window.innerHeight;
       latestProgress = Math.max(0, Math.min(1, scrollY / totalScroll));
       setScrollProgress(latestProgress);
+    };
 
-      if (!ticking) {
-        requestAnimationFrame(updateVideo);
-        ticking = true;
+    const tick = () => {
+      if (videoRef.current?.duration) {
+        videoRef.current.currentTime = latestProgress * videoRef.current.duration;
       }
+      rafId = requestAnimationFrame(tick);
     };
 
     window.addEventListener('scroll', handleScroll, { passive: true });
+    rafId = requestAnimationFrame(tick);
+
     return () => {
       window.removeEventListener('scroll', handleScroll);
+      cancelAnimationFrame(rafId);
     };
   }, []);
 
   const handleLoadedMetadata = () => {
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.currentTime = 0;
-    }
     setIsLoaded(true);
   };
 

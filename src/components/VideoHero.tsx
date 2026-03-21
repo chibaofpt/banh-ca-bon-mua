@@ -69,6 +69,8 @@ const VideoHero: React.FC = () => {
           ref={videoRef}
           src="/demo.mp4"
           muted
+          autoPlay
+          loop
           playsInline
           className="h-full w-full object-cover opacity-80"
           onLoadedMetadata={handleLoadedMetadata}

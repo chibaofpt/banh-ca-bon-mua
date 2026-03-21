@@ -106,11 +106,11 @@ const VideoHero: React.FC = () => {
 
           {/* Bottom: Scroll Indicator */}
           <div
-            className={`flex flex-col items-center transition-all duration-500 pb-8 pointer-events-auto ${scrollProgress > 0.05 ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}
+            className={`flex flex-col items-center scroll -mx-3 transition-all duration-500 pb-8 pointer-events-auto ${scrollProgress > 0.05 ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}
             suppressHydrationWarning
           >
-            <span className="text-sage-accent/80 text-[10px] uppercase tracking-[0.4em] mb-4 font-light">
-              Scroll to explore
+            <span className="text-sage-accent/80 text-[12px] uppercase tracking-[0.4em] mb-4 font-light">
+              Trượt xuống để pha matcha
             </span>
             <div className="w-[1px] h-16 bg-gradient-to-b from-white to-transparent animate-scroll-bounce bg-white/40" />
           </div>

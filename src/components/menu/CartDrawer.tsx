@@ -20,6 +20,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, zaloNumber }) 
   useBodyScrollLock(isOpen);
   const { items, removeItem, clearCart, totalPrice } = useCartStore();
   const [isAnimating, setIsAnimating] = useState(false);
+  const [toast, setToast] = useState('');
 
   // Handle animation state for smooth transitions
   useEffect(() => {
@@ -33,25 +34,30 @@ const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, zaloNumber }) 
 
   if (!isOpen && !isAnimating) return null;
 
-  const handleZaloOrder = () => {
+  const handleZaloOrder = async () => {
     const msg = buildZaloMessage(items);
-    const url = `https://zalo.me/${zaloNumber}?text=${encodeURIComponent(msg)}`;
-    console.log(msg, url)
-    window.open(url, '_blank');
+    try {
+      await navigator.clipboard.writeText(msg);
+      setToast('Đã copy đơn hàng! Paste vào Zalo nhé 🐟');
+      setTimeout(() => setToast(''), 3000);
+    } catch (err) {
+      console.error('Failed to copy order:', err);
+    }
+    window.open(`https://zalo.me/${zaloNumber}`, '_blank');
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex justify-end">
+    <div className="fixed inset-0 z-100 flex justify-end">
       {/* Overlay */}
       <div
-        className={`fixed inset-0 bg-black/40 transition-opacity duration-300 z-[101] ${isOpen ? 'opacity-100' : 'opacity-0'
+        className={`fixed inset-0 bg-black/40 transition-opacity duration-300 z-101 ${isOpen ? 'opacity-100' : 'opacity-0'
           }`}
         onClick={onClose}
       />
 
       {/* Drawer Content */}
       <div
-        className={`relative w-full max-w-sm bg-white h-full shadow-2xl z-[102] flex flex-col transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'
+        className={`relative w-full max-w-sm bg-white h-full shadow-2xl z-102 flex flex-col transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
       >
         {/* Header */}
@@ -115,7 +121,14 @@ const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, zaloNumber }) 
 
         {/* Footer */}
         {items.length > 0 && (
-          <footer className="p-4 bg-white border-t space-y-3">
+          <footer className="p-4 bg-white border-t space-y-3 relative">
+            {/* Toast Notification */}
+            {toast && (
+              <div className="absolute bottom-[calc(100%+16px)] left-1/2 -translate-x-1/2 w-max max-w-[90%] bg-[#16610C] text-white py-2.5 px-5 rounded-full text-[13px] font-medium shadow-xl z-50 animate-fade-in-up">
+                {toast}
+              </div>
+            )}
+
             <div className="flex justify-between items-center mb-2">
               <span className="text-[16px] font-bold text-[#16610C]">Tổng</span>
               <span className="text-[16px] font-bold text-[#16610C]">
@@ -127,7 +140,7 @@ const CartDrawer: React.FC<CartDrawerProps> = ({ isOpen, onClose, zaloNumber }) 
               onClick={handleZaloOrder}
               className="w-full bg-[#16610C] text-white rounded-xl py-3.5 text-[15px] font-bold shadow-lg shadow-[#16610C]/20 active:scale-[0.98] transition-all"
             >
-              Đặt qua Zalo →
+              Copy đơn & mở Zalo 🐟
             </button>
 
             <button

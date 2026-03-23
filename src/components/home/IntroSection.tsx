@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import FeatureCard from './FeatureCard';
+import FeatureCard from '@/src/components/home/FeatureCard';
 
 const cards = [
   { icon: "🍵", label: "Ceremonial Grade", description: "Matcha nguyên chất, không pha tạp", direction: "left" },
@@ -17,7 +17,7 @@ const IntroSection: React.FC = () => {
   const [sectionVisible, setSectionVisible] = useState(false);
   const [cardVisible, setCardVisible] = useState<boolean[]>([false, false, false]);
 
-  // Section fade in
+  // Section fade-in animation triggered when the section enters the viewport
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -32,7 +32,7 @@ const IntroSection: React.FC = () => {
     return () => observer.disconnect();
   }, []);
 
-  // Each card triggers individually
+  // Staggered card animation: Each card is observed and triggered individually
   useEffect(() => {
     const observers: IntersectionObserver[] = [];
 

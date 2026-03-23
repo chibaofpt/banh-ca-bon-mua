@@ -114,9 +114,10 @@
     },
     {
       "id": "a4",
-      "name": "Tăng / Giảm Matcha",
-      "description": "Điều chỉnh lượng matcha theo khẩu vị",
-      "price": 5,
+      "name": "Thêm bột matcha",
+      "description": "Thêm bột matcha nguyên chất vào ly",
+      "pricePerGram": 5,
+      "maxGrams": 3,
       "image": "https://images.unsplash.com/photo-1515823662972-da6a2e4d3002?w=400&q=80"
     }
   ],

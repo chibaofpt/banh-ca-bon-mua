@@ -16,11 +16,13 @@ const VideoHero: React.FC = () => {
 
   // Badge cycling removed - now scroll-linked
 
-  // Scroll logic
+  // Scroll-linked video playback logic
   useEffect(() => {
     let rafId: number;
     let latestProgress = 0;
 
+    // handleScroll calculates the vertical scroll progress (0 to 1) 
+    // based on the height of the hero container vs viewport.
     const handleScroll = () => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
@@ -30,6 +32,8 @@ const VideoHero: React.FC = () => {
       setScrollProgress(latestProgress);
     };
 
+    // tick synchronizes the video currentTime with the latest scroll progress.
+    // This creates the 'scrubbing' effect as the user scrolls.
     const tick = () => {
       if (videoRef.current && videoRef.current.duration) {
         // Clamp to slightly before duration to avoid potential reset/loop behavior at the exact end
@@ -54,6 +58,8 @@ const VideoHero: React.FC = () => {
     }
     setIsLoaded(true);
   };
+
+  void isLoaded; // used for future fade-in
 
   return (
     <div

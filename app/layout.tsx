@@ -14,12 +14,14 @@ const cormorant = Cormorant_Garamond({
 });
 
 const title = "Bánh Cá Bốn Mùa – Matcha Ngon Thủ Dầu Một";
-const description = "Bánh cá và matcha ngon tại Thủ Dầu Một. Matcha ceremonial grade, đa dạng theo mùa, giá chỉ từ 25k. Thưởng thức vị matcha chuẩn Nhật giữa lòng Bình Dương.";
+const description =
+  "Bánh cá và matcha ngon tại Thủ Dầu Một. Matcha ceremonial grade, đa dạng theo mùa, giá chỉ từ 30k. Thưởng thức vị matcha chuẩn Nhật giữa lòng Bình Dương.";
 
 export const metadata: Metadata = {
   title,
   description,
-  keywords: "matcha ngon, matcha Thủ Dầu Một, matcha ceremonial grade, matcha Bình Dương, bánh cá matcha, đồ uống matcha, trà matcha tươi, matcha theo mùa, matcha giá rẻ, quán matcha Bình Dương",
+  keywords:
+    "matcha ngon, matcha Thủ Dầu Một, matcha ceremonial grade, matcha Bình Dương, bánh cá matcha, đồ uống matcha, trà matcha tươi, matcha theo mùa, matcha giá rẻ, quán matcha Bình Dương",
   openGraph: {
     title,
     description,

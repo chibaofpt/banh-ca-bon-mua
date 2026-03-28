@@ -51,6 +51,8 @@ export interface Addon {
   pricePerGram?: number;
   maxGrams?: number;
   image: string;
+  type?: string;
+  options?: { label: string; price: number; default?: boolean }[];
 }
 
 // The complete menu structure as fetched from menu.json

@@ -1,7 +1,11 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from 'react';
+import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { useRouter } from 'next/navigation';
+import { Search, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
+
 import type { MenuData, MenuItem } from '@/src/lib/types/menu';
 import { fetchMenu } from '@/src/services/menuService';
 import TabBar from '@/src/components/menu/TabBar';
@@ -10,20 +14,25 @@ import MenuCard from '@/src/components/menu/MenuCard';
 import ProductModal from '@/src/components/menu/ProductModal';
 import CartButton from '@/src/components/menu/CartButton';
 import CartDrawer from '@/src/components/menu/CartDrawer';
+import { Skeleton } from '@/src/components/ui/skeleton';
+
+const fadeUp: Variants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: (i: number) => ({
+    opacity: 1,
+    y: 0,
+    transition: { delay: i * 0.05, duration: 0.4, ease: "easeOut" }
+  }),
+};
 
 export default function MenuPage() {
   const router = useRouter();
   const [data, setData] = useState<MenuData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>('daily');
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
-  const [isCartOpen, setIsCartOpen] = useState(false);
 
-  /**
-   * Initial data fetch:
-   * - Calls fetchMenu service to get transformed data.
-   * - Manages loading state during the async request.
-   */
   useEffect(() => {
     fetchMenu()
       .then(setData)
@@ -31,88 +40,108 @@ export default function MenuPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  // currentItems filters the menu based on the active tab selection
-  const currentItems = useMemo(() => {
+  const filteredItems = useMemo(() => {
     if (!data) return [];
-    if (activeTab === 'daily') return data.daily;
-    if (activeTab === 'seasonal') return data.seasonal;
-    return [];
-  }, [data, activeTab]);
+    
+    let items: MenuItem[] = [];
+    if (activeTab === 'daily') items = data.daily;
+    else if (activeTab === 'seasonal') items = data.seasonal;
+    else items = []; // Taiyaki placeholder
+    
+    if (!searchQuery) return items;
+    
+    return items.filter(item => 
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+  }, [data, activeTab, searchQuery]);
 
   return (
-    <main className="min-h-screen bg-[#f7faf5] text-[#1a1a1a] font-sans pb-20">
-      {/* Fixed Sticky Header Area */}
-      <div className="bg-white/80 backdrop-blur-md sticky top-0 z-50 px-6 pt-8 pb-4">
-        {/* Back Button */}
-        <button
-          onClick={() => router.push('/')}
-          className="absolute left-6 text-sm font-medium text-[#888] hover:text-[#16610C] transition-colors"
-        >
-          ← Trang chủ
-        </button>
+    <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-32 pb-32 px-6">
+      <div className="max-w-2xl mx-auto">
+        
+        {/* Header - Match Image 3 */}
+        <div className="text-center mb-12">
+          <Link 
+            href="/" 
+            className="inline-flex items-center gap-2 text-sm text-primary/60 hover:text-primary font-bold uppercase tracking-widest transition-colors mb-6"
+          >
+            <ArrowLeft className="w-4 h-4" /> Trang chủ
+          </Link>
+          <h1 className="font-serif text-4xl md:text-5xl font-bold text-primary mb-2">Thực Đơn</h1>
+          <p className="text-primary/60 text-sm italic">Chọn đúng mùa, đúng vị, đúng giá</p>
+        </div>
 
-        {/* Header Content */}
-        <div className="text-center">
-          <h1 className="font-serif text-[#16610C] text-[32px] md:text-[42px] font-medium leading-tight">
-            Thực Đơn
-          </h1>
-          <p className="text-[#5a8a52] text-[10px] md:text-xs uppercase tracking-[0.1em] mt-1 font-medium">
-            Chọn đúng mùa, đúng vị, đúng giá
-          </p>
+        {/* Search Bar - Match Image 3 glass-card */}
+        <div className="relative mb-8 group">
+          <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-primary/30 group-focus-within:text-primary/60 transition-colors" />
+          <input 
+            type="text"
+            placeholder="Hôm nay bạn muốn gì? (vd: lạnh và ngọt)"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-14 pr-6 py-4 rounded-4xl bg-white border border-border shadow-sm focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all text-sm placeholder:text-primary/30"
+          />
+        </div>
+
+        {/* Tabs - Now using restored TabBar */}
+        <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
+
+        {/* Menu Grid - Match Image 2/3 */}
+        <div className="mt-4">
+          <AnimatePresence mode="wait">
+            {loading ? (
+              <div key="loading" className="grid grid-cols-2 gap-4">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="aspect-4/3 rounded-4xl bg-secondary/20 animate-pulse" />
+                ))}
+              </div>
+            ) : filteredItems.length === 0 ? (
+              <motion.div 
+                 key="empty"
+                 initial={{ opacity: 0 }}
+                 animate={{ opacity: 1 }}
+                 className="py-24 text-center text-primary/40 space-y-4"
+              >
+                 <span className="text-6xl">🍲</span>
+                 <p className="font-bold text-lg italic">Không thấy món này...</p>
+                 <p className="text-sm">Thử tìm tên khác nhé</p>
+              </motion.div>
+            ) : (
+              <motion.div 
+                key={activeTab + searchQuery}
+                initial="hidden"
+                animate="visible"
+                className="grid grid-cols-2 gap-4 md:gap-6"
+              >
+                {filteredItems.map((item, idx) => (
+                  <motion.div key={item.id} variants={fadeUp} custom={idx}>
+                    <MenuCard
+                      item={item}
+                      index={idx}
+                      onClick={() => setSelectedItem(item)}
+                    />
+                  </motion.div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6">
-        <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
-
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="w-8 h-8 border-2 border-[#16610C]/20 border-t-[#16610C] rounded-full animate-spin mb-4" />
-            <p className="text-[#5a8a52] text-xs">Đang tải hương vị...</p>
-          </div>
-        ) : (
-          <div>
-            {activeTab === 'taiyaki' ? (
-              <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in">
-                <span className="text-5xl mb-4">🐟</span>
-                <p className="text-[14px] text-[#5a8a52] italic font-medium">Sắp có rồi...</p>
-                <p className="text-[12px] text-[#888] mt-1">Bánh cá đang được nướng</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-px bg-[#e0eed8] border-[0.5px] border-[#e0eed8] overflow-hidden">
-                {currentItems.map((item, idx) => (
-                  <MenuCard
-                    key={item.id}
-                    item={item}
-                    index={idx}
-                    onClick={() => setSelectedItem(item)}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {selectedItem && data && (
-        <ProductModal
-          item={selectedItem}
-          addons={data.addons}
-          contact={data.contact}
-          onClose={() => setSelectedItem(null)}
-        />
-      )}
-
-      {data && (
-        <>
-          <CartButton onClick={() => setIsCartOpen(true)} />
-          <CartDrawer 
-            isOpen={isCartOpen} 
-            onClose={() => setIsCartOpen(false)} 
-            zaloNumber={data.contact.zalo} 
+      <AnimatePresence>
+        {selectedItem && data && (
+          <ProductModal
+            item={selectedItem}
+            addons={data.addons}
+            contact={data.contact}
+            onClose={() => setSelectedItem(null)}
           />
-        </>
-      )}
+        )}
+      </AnimatePresence>
+
+      <CartButton />
+      <CartDrawer />
     </main>
   );
 }

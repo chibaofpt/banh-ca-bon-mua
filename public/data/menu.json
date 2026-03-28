@@ -93,10 +93,24 @@
   "addons": [
     {
       "id": "a1",
-      "name": "Oatside",
-      "description": "Thay sữa bằng oat milk Oatside",
-      "price": 5,
-      "image": "https://images.unsplash.com/photo-1600718374662-0483d2b9da44?w=400&q=80"
+      "name": "Loại sữa",
+      "description": "Chọn loại sữa cho ly của bạn",
+      "type": "milk_selector",
+      "options": [
+        {
+          "label": "Sữa bò",
+          "price": 0,
+          "default": true
+        },
+        {
+          "label": "Sữa Oat",
+          "price": 0
+        },
+        {
+          "label": "Boring Oat",
+          "price": 5
+        }
+      ]
     },
     {
       "id": "a2",

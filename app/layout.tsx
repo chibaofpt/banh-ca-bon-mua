@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
-import { Inter, Cormorant_Garamond } from "next/font/google";
+import { Inter, Playfair_Display } from "next/font/google";
+import Navbar from "@/src/components/common/Navbar";
+import { UIProvider } from "@/src/context/UIContext";
 import "./globals.css";
 
 const inter = Inter({
@@ -7,30 +9,26 @@ const inter = Inter({
   subsets: ["latin", "vietnamese"],
 });
 
-const cormorant = Cormorant_Garamond({
-  variable: "--font-cormorant",
+const playfair = Playfair_Display({
+  variable: "--font-playfair",
   subsets: ["latin", "vietnamese"],
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const title = "Bánh Cá Bốn Mùa – Matcha Ngon Thủ Dầu Một";
+const title = "Bánh Cá Bốn Mùa – Matcha & Bánh Cá Thủ Công";
 const description =
-  "Bánh cá và matcha ngon tại Thủ Dầu Một. Matcha ceremonial grade, đa dạng theo mùa, giá chỉ từ 30k. Thưởng thức vị matcha chuẩn Nhật giữa lòng Bình Dương.";
+  "Bánh cá và matcha ngon tại Thủ Dầu Một. Matcha ceremonial grade, đa dạng theo mùa. Thưởng thức vị matcha chuẩn Nhật giữa lòng Bình Dương.";
 
 export const metadata: Metadata = {
   title,
   description,
   keywords:
-    "matcha ngon, matcha Thủ Dầu Một, matcha ceremonial grade, matcha Bình Dương, bánh cá matcha, đồ uống matcha, trà matcha tươi, matcha theo mùa, matcha giá rẻ, quán matcha Bình Dương",
+    "matcha ngon, matcha Thủ Dầu Một, matcha ceremonial grade, matcha Bình Dương, bánh cá matcha",
   openGraph: {
     title,
     description,
     type: "website",
     locale: "vi_VN",
-  },
-  robots: {
-    index: true,
-    follow: true,
   },
 };
 
@@ -42,11 +40,16 @@ export default function RootLayout({
   return (
     <html
       lang="vi"
-      className={`${inter.variable} ${cormorant.variable} h-full antialiased`}
+      className={`${inter.variable} ${playfair.variable} h-full antialiased scroll-smooth`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-white text-[#1a1a1a] font-sans overflow-x-hidden">
-        {children}
+      <body className="min-h-full flex flex-col bg-background text-foreground font-sans overflow-x-hidden border-border transition-colors duration-300">
+        <UIProvider>
+          <Navbar />
+          <main className="flex-1">
+            {children}
+          </main>
+        </UIProvider>
       </body>
     </html>
   );

@@ -1,3 +1,5 @@
+"use client";
+
 import React from 'react';
 
 type TabId = 'daily' | 'seasonal' | 'taiyaki';
@@ -20,15 +22,15 @@ const tabs: Tab[] = [
 
 const TabBar: React.FC<TabBarProps> = ({ activeTab, setActiveTab }) => {
   return (
-    <div className="flex w-full border-b-[1px] border-[#e0eed8] mb-8 bg-white sticky top-[72px] z-40">
+    <div className="flex gap-2 overflow-x-auto pb-6 mt-8 no-scrollbar">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => setActiveTab(tab.id)}
-          className={`flex-1 text-center py-2.5 text-[12px] font-medium tracking-[0.05em] uppercase transition-all duration-300 ${
+          className={`px-6 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all duration-400 ${
             activeTab === tab.id
-              ? 'text-[#16610C] border-b-2 border-[#16610C] bg-white'
-              : 'text-[#888] bg-transparent'
+              ? 'bg-primary text-white shadow-lg'
+              : 'bg-[#d9e4d4] text-primary/70 hover:bg-[#c9d4c4]'
           }`}
         >
           {tab.label}

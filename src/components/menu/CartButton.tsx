@@ -1,31 +1,39 @@
 "use client";
 
-import React from 'react';
-import { useCartStore } from '@/src/lib/store/cartStore';
-
-interface CartButtonProps {
-  onClick: () => void;
-}
+import React from "react";
+import { ShoppingBag } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useCartStore } from "@/src/lib/store/cartStore";
+import { useUI } from "@/src/context/UIContext";
 
 /**
  * CartButton is a floating action button that displays the total number of items in the cart.
+ * Updated with premium styling and UIProvider connection.
  */
-const CartButton: React.FC<CartButtonProps> = ({ onClick }) => {
-  const { totalItems } = useCartStore();
-  const count = totalItems();
+const CartButton: React.FC = () => {
+  const { items } = useCartStore();
+  const { setCartOpen } = useUI();
+  const count = items.length;
 
   return (
     <button
-      onClick={onClick}
-      className="fixed bottom-6 right-6 z-50 w-[52px] h-[52px] bg-[#16610C] text-white rounded-full flex items-center justify-center shadow-xl active:scale-95 transition-transform"
+      onClick={() => setCartOpen(true)}
+      className="fixed bottom-8 right-8 z-50 w-16 h-16 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all group lg:hidden"
       aria-label="Mở giỏ hàng"
     >
-      <span className="text-[20px]">🛒</span>
-      {count > 0 && (
-        <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center">
-          {count}
-        </span>
-      )}
+      <ShoppingBag className="w-6 h-6 group-hover:rotate-12 transition-transform" />
+      <AnimatePresence>
+        {count > 0 && (
+          <motion.span
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            exit={{ scale: 0 }}
+            className="absolute -top-1 -right-1 w-6 h-6 bg-accent text-accent-foreground text-[12px] font-bold rounded-full flex items-center justify-center border-2 border-background"
+          >
+            {count}
+          </motion.span>
+        )}
+      </AnimatePresence>
     </button>
   );
 };

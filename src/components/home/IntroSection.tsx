@@ -61,20 +61,20 @@ const IntroSection: React.FC = () => {
   return (
     <section
       ref={sectionRef}
-      className={`relative z-10 bg-white py-24 px-6 md:py-32 transition-all duration-1000 transform
+      className={`relative z-10 bg-background py-24 px-6 md:py-32 transition-all duration-1000 transform
         ${sectionVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}
     >
       <div className="max-w-[680px] mx-auto text-center space-y-12">
         <header className="space-y-4">
-          <h2 className="text-sm font-medium tracking-[0.2em] text-[#6a6a6a] uppercase">
+          <h2 className="text-xs font-bold tracking-[0.3em] text-primary uppercase">
             Bánh Cá Bốn Mùa
           </h2>
-          <h1 className="font-serif text-4xl md:text-5xl text-primary-green leading-tight">
-            Matcha chuẩn vị – Giá không chuẩn
+          <h1 className="font-serif text-4xl md:text-5xl text-foreground font-bold leading-tight">
+            Matcha chuẩn vị – <span className="text-primary italic">Giá không chuẩn</span>
           </h1>
         </header>
 
-        <div className="space-y-6 text-[#1a1a1a] leading-relaxed text-lg">
+        <div className="space-y-6 text-foreground/80 leading-relaxed text-lg">
           <p>
             Chúng tôi chọn matcha ceremonial grade nguyên chất từ những vùng trà nổi tiếng
             của Nhật Bản — vị đắng thanh, màu xanh sâu, không pha tạp. Mỗi ly được pha
@@ -110,14 +110,15 @@ const IntroSection: React.FC = () => {
         <div className="pt-10">
           <button
             onClick={() => router.push('/menu')}
-            className="bg-primary-green text-white px-10 py-4 rounded-full font-medium 
-              transition-all duration-300 hover:scale-105 hover:bg-[#0f4a08] shadow-lg"
+            className="bg-primary text-primary-foreground px-10 py-4 rounded-full font-bold 
+              transition-all duration-300 hover:scale-105 hover:bg-primary/90 shadow-xl"
           >
-            Xem thực đơn
+            Xem thực đơn 🐟
           </button>
         </div>
       </div>
     </section>
+
   );
 };
 

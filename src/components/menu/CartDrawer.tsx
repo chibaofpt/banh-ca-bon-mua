@@ -2,12 +2,11 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Trash2 } from "lucide-react";
-import { useCartStore } from "@/src/lib/store/cartStore";
-import { useUI } from "@/src/context/UIContext";
+import { useCartStore, useCartTotalPrice } from "@/src/lib/store/cartStore";
 
 const CartDrawer = () => {
-  const { items, removeItem, clearCart, totalPrice } = useCartStore();
-  const { isCartOpen, setCartOpen } = useUI();
+  const { items, removeItem, clearCart, isCartOpen, setCartOpen } = useCartStore();
+  const totalPrice = useCartTotalPrice();
 
   const buildOrderText = () => {
     const lines = items.map((item) => {
@@ -19,7 +18,7 @@ const CartDrawer = () => {
       parts.push(`${item.totalPrice * item.quantity} cá`);
       return parts.join(" | ");
     });
-    lines.push(`\nTổng: 🐟 ${totalPrice()} cá`);
+    lines.push(`\nTổng: 🐟 ${totalPrice} cá`);
     return `Đơn hàng Bánh Cá Bốn Mùa:\n${lines.join("\n")}`;
   };
 
@@ -115,7 +114,7 @@ const CartDrawer = () => {
               <div className="border-t border-border px-5 py-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="font-serif text-lg font-bold text-foreground">Tổng</span>
-                  <span className="font-serif text-lg font-bold text-primary">🐟 {totalPrice()} cá</span>
+                  <span className="font-serif text-lg font-bold text-primary">🐟 {totalPrice} cá</span>
                 </div>
                 <button
                   onClick={handleCopyAndZalo}

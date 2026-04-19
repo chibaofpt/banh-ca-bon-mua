@@ -1,85 +1,65 @@
-import { useState, useEffect } from 'react';
-import type { CartItem, CartStore } from '@/src/lib/types/cart';
+"use client";
+
+import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import type { CartItem } from "@/src/lib/types/cart";
+
+interface CartState {
+  items: CartItem[];
+  isCartOpen: boolean;
+  setCartOpen: (open: boolean) => void;
+  addItem: (newItem: Omit<CartItem, "quantity">) => void;
+  removeItem: (id: string, size: string) => void;
+  clearCart: () => void;
+}
 
 /**
- * Lightweight custom state management for the Shopping Cart.
- * Follows the observer pattern to provide reactive updates without external libraries (like Zustand).
+ * useCartStore — global shopping cart state managed by Zustand.
+ * Persisted to localStorage so the fish stay in the bag after refresh.
  */
+export const useCartStore = create<CartState>()(
+  persist(
+    (set, get) => ({
+      items: [],
+      isCartOpen: false,
+      setCartOpen: (open) => set({ isCartOpen: open }),
 
-// Internal state
-let cartItems: CartItem[] = [];
-const listeners = new Set<() => void>();
+      addItem: (newItem) => {
+        const { items } = get();
+        const existingIndex = items.findIndex(
+          (i) =>
+            i.id === newItem.id &&
+            i.size === newItem.size &&
+            i.sweetness === newItem.sweetness
+        );
 
-const notify = () => {
-  listeners.forEach((listener) => listener());
-};
+        if (existingIndex > -1) {
+          const newItems = [...items];
+          newItems[existingIndex] = {
+            ...newItems[existingIndex],
+            quantity: newItems[existingIndex].quantity + 1,
+          };
+          set({ items: newItems });
+        } else {
+          set({ items: [...items, { ...newItem, quantity: 1 }] });
+        }
+      },
 
-/**
- * useCartStore is the main hook used across the application to interact with the cart.
- * It provides the current state and actions to modify the cart.
- */
-export const useCartStore = (): CartStore => {
-  const [items, setItems] = useState<CartItem[]>(cartItems);
+      removeItem: (id, size) => {
+        set({
+          items: get().items.filter((i) => !(i.id === id && i.size === size)),
+        });
+      },
 
-  useEffect(() => {
-    // Synchronize local state with the external store whenever it changes
-    const handleChange = () => setItems([...cartItems]);
-    listeners.add(handleChange);
-    return () => {
-      listeners.delete(handleChange);
-    };
-  }, []);
+      clearCart: () => set({ items: [] }),
+    }),
+    { name: "bcbm-cart" }
+  )
+);
 
-  return {
-    items,
-    
-    /**
-     * addItem increments quantity if the item (same ID, size, and sweetness) 
-     * already exists; otherwise, it adds a new entry.
-     */
-    addItem: (newItem) => {
-      const existingIndex = cartItems.findIndex(
-        (i) =>
-          i.id === newItem.id &&
-          i.size === newItem.size &&
-          i.sweetness === newItem.sweetness
-      );
+/** Computed helpers for easier usage in components */
+export const useCartTotalItems = () =>
+  useCartStore((s) => s.items.reduce((sum, i) => sum + i.quantity, 0));
 
-      if (existingIndex > -1) {
-        cartItems[existingIndex] = {
-          ...cartItems[existingIndex],
-          quantity: cartItems[existingIndex].quantity + 1,
-        };
-      } else {
-        cartItems.push({ ...newItem, quantity: 1 });
-      }
-      notify();
-    },
-
-    /**
-     * removeItem strips all quantities of a specific item-size combination from the cart.
-     */
-    removeItem: (id, size) => {
-      cartItems = cartItems.filter((i) => !(i.id === id && i.size === size));
-      notify();
-    },
-
-    /**
-     * clearCart empties the entire shopping bag.
-     */
-    clearCart: () => {
-      cartItems = [];
-      notify();
-    },
-
-    /**
-     * totalItems returns the accumulated count of all fish in the bag.
-     */
-    totalItems: () => cartItems.reduce((sum, i) => sum + i.quantity, 0),
-
-    /**
-     * totalPrice returns the total cost of all items (including addons and quantities).
-     */
-    totalPrice: () => cartItems.reduce((sum, i) => sum + i.totalPrice * i.quantity, 0),
-  };
-};
+export const useCartTotalPrice = () =>
+  useCartStore((s) => s.items.reduce((sum, i) => sum + i.totalPrice * i.quantity, 0));

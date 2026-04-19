@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Playfair_Display } from "next/font/google";
 import Navbar from "@/src/components/common/Navbar";
-import { UIProvider } from "@/src/context/UIContext";
+import AuthModal from "@/src/components/common/AuthModal";
 import "./globals.css";
 
 const inter = Inter({
@@ -44,12 +44,11 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background text-foreground font-sans overflow-x-hidden border-border transition-colors duration-300">
-        <UIProvider>
-          <Navbar />
-          <main className="flex-1">
-            {children}
-          </main>
-        </UIProvider>
+        <Navbar />
+        <AuthModal />
+        <main className="flex-1">
+          {children}
+        </main>
       </body>
     </html>
   );

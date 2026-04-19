@@ -1,0 +1,290 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id               String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  phone_number     String      @unique
+  password_hash    String
+  role             Role        @default(CUSTOMER)
+  points_balance   Int         @default(0)
+  qr_token         String      @unique @default(dbgenerated("(gen_random_uuid())::text"))
+  otp_enabled      Boolean     @default(false)
+  created_at       DateTime    @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime    @default(now()) @updatedAt @db.Timestamptz(6)
+  orders           Order[]
+  performed_logs   PointsLog[] @relation("StaffPerformed")
+  points_logs      PointsLog[] @relation("UserPoints")
+  sessions         Session[]
+  redeemedVouchers Voucher[]   @relation("StaffRedeemed")
+  vouchers         Voucher[]   @relation("UserVouchers")
+
+  @@map("users")
+}
+
+model Session {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String   @db.Uuid
+  refresh_token String   @unique @default(dbgenerated("(gen_random_uuid())::text"))
+  expires_at    DateTime @db.Timestamptz(6)
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  user          User     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([refresh_token], map: "idx_sessions_refresh_token")
+  @@index([user_id], map: "idx_sessions_user_id")
+  @@map("sessions")
+}
+
+model OtpAttempt {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  phone_number String
+  code_hash    String
+  expires_at   DateTime @db.Timestamptz(6)
+  attempts     Int      @default(0)
+  verified     Boolean  @default(false)
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([phone_number], map: "idx_otp_attempts_phone")
+  @@map("otp_attempts")
+}
+
+model VoucherPackage {
+  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String
+  description        String?
+  voucher_type       VoucherType
+  points_cost        Int
+  discount_type      DiscountType?
+  discount_value     Int?
+  menu_item_id       String?       @db.Uuid
+  is_active          Boolean       @default(true)
+  expires_after_days Int?
+  created_at         DateTime      @default(now()) @db.Timestamptz(6)
+  menu_item          MenuItem?     @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  vouchers           Voucher[]
+
+  @@map("voucher_packages")
+}
+
+model Voucher {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id        String         @db.Uuid
+  package_id     String         @db.Uuid
+  qr_token       String         @unique @default(dbgenerated("(gen_random_uuid())::text"))
+  voucher_type   VoucherType
+  discount_type  DiscountType?
+  discount_value Int?
+  menu_item_id   String?        @db.Uuid
+  status         VoucherStatus  @default(ACTIVE)
+  used_channel   UsedChannel?
+  expires_at     DateTime?      @db.Timestamptz(6)
+  redeemed_at    DateTime?      @db.Timestamptz(6)
+  redeemed_by    String?        @db.Uuid
+  created_at     DateTime       @default(now()) @db.Timestamptz(6)
+  order_items    OrderItem[]
+  orders         Order[]
+  points_logs    PointsLog[]
+  menu_item      MenuItem?      @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  package        VoucherPackage @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff          User?          @relation("StaffRedeemed", fields: [redeemed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user           User           @relation("UserVouchers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([qr_token], map: "idx_vouchers_qr_token")
+  @@index([status], map: "idx_vouchers_status")
+  @@index([user_id], map: "idx_vouchers_user_id")
+  @@map("vouchers")
+}
+
+model PointsLog {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String      @db.Uuid
+  delta           Int
+  reason          String
+  performed_by    String?     @db.Uuid
+  reversed_log_id String?     @db.Uuid
+  order_id        String?     @db.Uuid
+  voucher_id      String?     @db.Uuid
+  created_at      DateTime    @default(now()) @db.Timestamptz(6)
+  order           Order?      @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  staff           User?       @relation("StaffPerformed", fields: [performed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reversed_log    PointsLog?  @relation("Reversal", fields: [reversed_log_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reversal_logs   PointsLog[] @relation("Reversal")
+  user            User        @relation("UserPoints", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  voucher         Voucher?    @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([created_at(sort: Desc)], map: "idx_points_log_created_at")
+  @@index([user_id], map: "idx_points_log_user_id")
+  @@map("points_log")
+}
+
+model Promotion {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title           String
+  description     String?
+  starts_at       DateTime @db.Timestamptz(6)
+  ends_at         DateTime @db.Timestamptz(6)
+  max_redemptions Int
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  @@map("promotions")
+}
+
+model MenuItem {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name             String
+  description      String?
+  price_vnd        Int
+  category         String
+  image_url        String?
+  is_available     Boolean          @default(true)
+  sort_order       Int              @default(0)
+  created_at       DateTime         @default(now()) @db.Timestamptz(6)
+  addon_groups     MenuItemAddon[]
+  order_items      OrderItem[]
+  voucher_packages VoucherPackage[]
+  vouchers         Voucher[]
+
+  @@index([category], map: "idx_menu_items_category")
+  @@index([is_available], map: "idx_menu_items_is_available")
+  @@map("menu_items")
+}
+
+model AddonGroup {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name         String
+  description  String?
+  type         AddonType
+  is_required  Boolean
+  min_quantity Int?
+  max_quantity Int?
+  created_at   DateTime        @default(now()) @db.Timestamptz(6)
+  options      AddonOption[]
+  menu_items   MenuItemAddon[]
+
+  @@map("addon_groups")
+}
+
+model AddonOption {
+  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  addon_group_id    String           @db.Uuid
+  label             String
+  price_vnd         Int              @default(0)
+  is_default        Boolean          @default(false)
+  sort_order        Int              @default(0)
+  group             AddonGroup       @relation(fields: [addon_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  order_item_addons OrderItemAddon[]
+
+  @@map("addon_options")
+}
+
+model MenuItemAddon {
+  menu_item_id   String     @db.Uuid
+  addon_group_id String     @db.Uuid
+  addon_group    AddonGroup @relation(fields: [addon_group_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  menu_item      MenuItem   @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([menu_item_id, addon_group_id])
+  @@map("menu_item_addons")
+}
+
+model Order {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String      @db.Uuid
+  voucher_id    String?     @db.Uuid
+  status        OrderStatus @default(PENDING)
+  subtotal_vnd  Int
+  discount_vnd  Int         @default(0)
+  total_vnd     Int
+  points_earned Int?
+  pickup_time   DateTime?   @db.Timestamptz(6)
+  note          String?
+  created_at    DateTime    @default(now()) @db.Timestamptz(6)
+  items         OrderItem[]
+  user          User        @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  voucher       Voucher?    @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  points_logs   PointsLog[]
+
+  @@index([created_at(sort: Desc)], map: "idx_orders_created_at")
+  @@index([status], map: "idx_orders_status")
+  @@index([user_id], map: "idx_orders_user_id")
+  @@map("orders")
+}
+
+model OrderItem {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id           String           @db.Uuid
+  menu_item_id       String           @db.Uuid
+  quantity           Int
+  unit_price_vnd     Int
+  addons_price_vnd   Int              @default(0)
+  product_voucher_id String?          @db.Uuid
+  note               String?
+  addons             OrderItemAddon[]
+  menu_item          MenuItem         @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order              Order            @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  product_voucher    Voucher?         @relation(fields: [product_voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([order_id], map: "idx_order_items_order_id")
+  @@map("order_items")
+}
+
+model OrderItemAddon {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_item_id   String      @db.Uuid
+  addon_option_id String      @db.Uuid
+  quantity        Int
+  unit_price_vnd  Int
+  addon_option    AddonOption @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order_item      OrderItem   @relation(fields: [order_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("order_item_addons")
+}
+
+enum Role {
+  CUSTOMER
+  STAFF
+  ADMIN
+}
+
+enum VoucherType {
+  DISCOUNT
+  PRODUCT
+}
+
+enum DiscountType {
+  PERCENT
+  FIXED
+}
+
+enum VoucherStatus {
+  ACTIVE
+  REDEEMED
+  EXPIRED
+}
+
+enum UsedChannel {
+  ONLINE
+  OFFLINE
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum AddonType {
+  SELECTOR
+  TOGGLE
+  QUANTITY
+}

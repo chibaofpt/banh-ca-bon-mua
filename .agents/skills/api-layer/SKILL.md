@@ -1,0 +1,193 @@
+---
+name: api-layer
+description: >
+  Standardizes the full API layer for Bánh Cá Bốn Mùa — Next.js 16 App Router.
+  Use this skill whenever creating a new API route, frontend service, route handler,
+  or reorganizing how API calls are made in views/components.
+  Trigger on: "write api", "create route", "call api", "fetch data", "service layer",
+  "api client", "organize api", or any request involving data flow between frontend
+  and backend in this project.
+---
+
+# API Layer Skill
+
+> ⚠️ All folder decisions follow `STRUCTURE.md`. If there's a conflict, STRUCTURE.md wins.
+
+---
+
+## Layer Boundaries (hard rules — never violate)
+
+| Layer | Can import | Cannot import |
+|---|---|---|
+| `src/components/` | `src/lib/types/`, `src/utils/`, `src/lib/` | `src/services/`, `lib/` |
+| `src/views/` | `src/components/`, `src/services/`, `src/lib/` | `lib/` |
+| `src/services/` | `src/lib/types/`, `src/lib/api/client` | `lib/` (server-only!) |
+| `app/api/**/route.ts` | `lib/`, `src/lib/types/` | `src/components/`, `src/views/` |
+| `lib/` | other `lib/` files | `src/` |
+
+---
+
+## Frontend — src/services/
+
+**Rules:**
+- One file per domain: `{domain}Service.ts` (e.g. `menuService.ts`, `orderService.ts`)
+- Only layer allowed to know API URLs — declare as `const URL = { ... } as const` at top of file
+- Always use `apiClient` from `src/lib/api/client.ts` — never create another Axios instance
+- Always declare return types explicitly — never let TypeScript infer from Axios response
+- Views call services. Components never call services.
+
+**Axios instance (`src/lib/api/client.ts`):**
+```typescript
+import axios from "axios";
+
+export const apiClient = axios.create({
+  baseURL: process.env.NEXT_PUBLIC_APP_URL,
+  withCredentials: true,
+  headers: { "Content-Type": "application/json" },
+});
+
+// Auto-retry once with refresh token on 401
+apiClient.interceptors.response.use(
+  (res) => res,
+  async (error) => {
+    const original = error.config;
+    if (error.response?.status === 401 && !original._retry) {
+      original._retry = true;
+      await axios.post("/api/auth/refresh", {}, { withCredentials: true });
+      return apiClient(original);
+    }
+    return Promise.reject(error);
+  }
+);
+```
+
+**Shared types (`src/lib/types/api.ts`):**
+```typescript
+export type ApiResponse<T> = { data: T };
+export type ApiError = { error: string; code: string };
+```
+
+**Service pattern:**
+```typescript
+// src/services/orderService.ts
+import { apiClient } from "@/src/lib/api/client";
+import type { ApiResponse } from "@/src/lib/types/api";
+import type { Order } from "@/src/lib/types/order";
+
+const URL = {
+  base: "/api/orders",
+  byId: (id: string) => `/api/orders/${id}`,
+} as const;
+
+/** Create a new order from cart */
+export async function createOrder(payload: CreateOrderPayload): Promise<Order> {
+  const res = await apiClient.post<ApiResponse<Order>>(URL.base, payload);
+  return res.data.data;
+}
+```
+
+**Usage pattern:**
+```typescript
+// app/(customer)/orders/page.tsx — entry only, no logic
+import OrdersPage from "@/src/views/OrdersPage";
+export default function Page() { return <OrdersPage />; }
+
+// src/views/OrdersPage.tsx — calls service, manages state
+// src/components/menu/MenuCard.tsx — receives props, never imports service
+```
+
+---
+
+## Backend — app/api/**/route.ts
+
+**Mandatory order — never swap steps:**
+1. Parse body with `.catch(() => null)`
+2. Zod validate → return `400 VALIDATION_ERROR` if fail
+3. `getSession(req)` → return `401 UNAUTHORIZED` if null
+4. Role check → return `403 FORBIDDEN` if insufficient
+5. Business logic — always `prisma.$transaction()` for multi-step writes
+6. Return `{ data: T }` on success
+
+**Route pattern:**
+```typescript
+import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth";
+import { createOrderSchema } from "@/lib/validations/order";
+import { prisma } from "@/lib/prisma";
+
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => null);
+
+  const parsed = createOrderSchema.safeParse(body);
+  if (!parsed.success)
+    return NextResponse.json({ error: "Invalid input", code: "VALIDATION_ERROR" }, { status: 400 });
+
+  const session = await getSession(req);
+  if (!session)
+    return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+
+  if (session.role !== "CUSTOMER")
+    return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+
+  const result = await prisma.$transaction(async (tx) => { /* ... */ });
+  return NextResponse.json({ data: result }, { status: 201 });
+}
+```
+
+**Zod schemas — `lib/validations/{domain}.ts` (no `.schema` suffix):**
+```typescript
+// lib/validations/auth.ts
+const phoneSchema = z
+  .string()
+  .regex(/^(0|\+84)\d{9}$/)
+  .transform((val) => (val.startsWith("0") ? `+84${val.slice(1)}` : val));
+
+export const registerSchema = z.object({
+  name: z.string().min(2).max(100),
+  phone_number: phoneSchema,
+  password: z.string().min(8).max(128),
+});
+```
+
+**Error codes — use these exactly, never invent new ones:**
+
+| HTTP | `code` | When |
+|---|---|---|
+| 400 | `VALIDATION_ERROR` | Zod parse failed |
+| 401 | `UNAUTHORIZED` | No session / expired token |
+| 403 | `FORBIDDEN` | Insufficient role |
+| 404 | `NOT_FOUND` | Resource does not exist |
+| 409 | `CONFLICT` | Duplicate (phone, token, ...) |
+| 422 | `BUSINESS_RULE_VIOLATION` | Insufficient points, expired voucher, ... |
+| 500 | `INTERNAL_ERROR` | Unexpected server error |
+
+**Critical backend rules:**
+- Server always re-fetches prices from DB — never trust client-sent prices
+- Money = integers in VND, never floats
+- Never expose `users.id` or `vouchers.id` — always use `qr_token`
+- Multi-step DB writes must use `prisma.$transaction()`
+- Every exported function needs a one-line JSDoc
+
+---
+
+## Commit Checklist
+
+**New backend route:**
+- [ ] Zod validates input before any DB access
+- [ ] `getSession()` called before business logic
+- [ ] Role checked explicitly
+- [ ] Multi-step DB in `prisma.$transaction()`
+- [ ] Response is `{ data: T }` or `{ error, code }`
+- [ ] No internal IDs exposed — `qr_token` only
+
+**New frontend service:**
+- [ ] File at `src/services/{domain}Service.ts`
+- [ ] Uses `apiClient` from `@/src/lib/api/client`
+- [ ] URLs in `const URL = { ... } as const`
+- [ ] Return type declared explicitly
+- [ ] No imports from `lib/`
+
+**New view/component:**
+- [ ] View at `src/views/{Name}Page.tsx` — calls service, owns state
+- [ ] Component at `src/components/{domain}/{Name}.tsx` — props only, no service imports
+- [ ] Page entry at `app/**/{route}/page.tsx` — re-exports view, zero logic

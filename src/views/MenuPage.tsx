@@ -132,6 +132,7 @@ export default function MenuPage() {
       <AnimatePresence>
         {selectedItem && data && (
           <ProductModal
+            key="product-modal-root"
             item={selectedItem}
             addons={data.addons}
             contact={data.contact}

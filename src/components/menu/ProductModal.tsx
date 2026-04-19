@@ -84,6 +84,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, addons, onClose }) =>
   return (
     <AnimatePresence>
       <motion.div
+        key="product-backdrop"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -91,6 +92,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, addons, onClose }) =>
         onClick={onClose}
       />
       <motion.div
+        key="product-content"
         initial={{ y: "100%" }}
         animate={{ y: 0 }}
         exit={{ y: "100%" }}

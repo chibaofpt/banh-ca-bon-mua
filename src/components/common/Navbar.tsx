@@ -1,112 +1,248 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { ShoppingBag, Menu, X } from "lucide-react";
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import { useCartStore } from "@/src/lib/store/cartStore";
-import { useUI } from "@/src/context/UIContext";
-import { cn } from "@/src/lib/utils";
+import {
+  ShoppingBag,
+  Menu,
+  X,
+  LogIn,
+  LogOut,
+  Gift,
+  Star,
+  Home,
+  UtensilsCrossed,
+} from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { NavLink } from "@/src/components/common/NavLink";
+import { useCartStore, useCartTotalItems } from "@/src/lib/store/cartStore";
+import { useAuthStore } from "@/src/lib/store/authStore";
+import { useAuthModalStore } from "@/src/lib/store/authModalStore";
 
+/**
+ * Navbar — fixed top bar with desktop links and mobile drawer.
+ * Auth state and modal control come from Zustand stores (no Provider needed).
+ */
 const Navbar = () => {
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const { items } = useCartStore();
-  const { setCartOpen } = useUI();
-  const totalItems = items.length;
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
 
-  useEffect(() => {
-    const handleScroll = () => {
-      setScrolled(window.scrollY > 20);
-    };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  // Auth
+  const isLoggedIn = useAuthStore((s) => s.user !== null);
+  const logout = useAuthStore((s) => s.logout);
+  const openLogin = useAuthModalStore((s) => s.openLogin);
+
+  // Cart
+  const setCartOpen = useCartStore((s) => s.setCartOpen);
+  const count = useCartTotalItems();
+
+  const handleLogout = () => {
+    logout();
+    setOpen(false);
+    router.push("/");
+  };
+
+  const close = () => setOpen(false);
 
   return (
-    <nav
-      className={cn(
-        "fixed top-0 left-0 right-0 z-100 transition-all duration-300",
-        scrolled ? "bg-white/95 backdrop-blur-md py-3" : "bg-white/95 backdrop-blur-sm py-4"
-      )}
+    <motion.nav
+      initial={{ y: -20, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-b border-border/40"
     >
-      <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
-        {/* Brand - Match Image 1 colors */}
-        <Link href="/" className="font-serif text-2xl md:text-3xl font-bold text-primary tracking-tight">
+      <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-16">
+        {/* Brand */}
+        <NavLink
+          href="/"
+          className="font-playfair text-2xl font-bold text-primary tracking-tight"
+        >
           Bánh Cá Bốn Mùa
-        </Link>
+        </NavLink>
 
-        {/* Desktop Links */}
-        <div className="hidden md:flex items-center gap-10">
-          <Link href="/" className="text-sm font-bold uppercase tracking-widest text-primary/80 hover:text-primary transition-colors">
+        {/* ── Desktop links ── */}
+        <div className="hidden md:flex items-center gap-6">
+          <NavLink
+            href="/"
+            className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
+            activeClassName="text-primary"
+          >
+            <Home className="w-3.5 h-3.5" />
             Trang chủ
-          </Link>
-          <Link href="/menu" className="text-sm font-bold uppercase tracking-widest text-primary/80 hover:text-primary transition-colors">
-            Thực đơn
-          </Link>
+          </NavLink>
 
+          <NavLink
+            href="/menu"
+            className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
+            activeClassName="text-primary"
+          >
+            <UtensilsCrossed className="w-3.5 h-3.5" />
+            Thực đơn
+          </NavLink>
+
+          <NavLink
+            href="/profile/points"
+            className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
+            activeClassName="text-primary"
+          >
+            <Star className="w-3.5 h-3.5" />
+            Đổi điểm
+          </NavLink>
+
+          {isLoggedIn ? (
+            <>
+              <NavLink
+                href="/profile/vouchers"
+                className="text-sm font-medium text-foreground/80 hover:text-primary transition-colors flex items-center gap-1.5"
+                activeClassName="text-primary"
+              >
+                <Gift className="w-3.5 h-3.5" />
+                Voucher
+              </NavLink>
+
+              <button
+                onClick={handleLogout}
+                className="text-sm font-medium text-foreground/80 hover:text-destructive transition-colors flex items-center gap-1.5"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Đăng xuất
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={openLogin}
+              className="text-sm font-medium text-primary hover:text-primary/80 transition-colors flex items-center gap-1.5"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              Đăng nhập
+            </button>
+          )}
+
+          {/* Cart button */}
           <button
             onClick={() => setCartOpen(true)}
-            className="group relative flex items-center justify-center w-10 h-10 rounded-full hover:bg-secondary/50 transition-colors"
+            className="relative p-2 rounded-full hover:bg-secondary transition-colors"
+            aria-label="Giỏ hàng"
           >
-            <ShoppingBag className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
+            <ShoppingBag className="w-5 h-5 text-primary" />
             <AnimatePresence>
-              {totalItems > 0 && (
+              {count > 0 && (
                 <motion.span
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   exit={{ scale: 0 }}
-                  className="absolute -top-1 -right-1 w-5 h-5 bg-accent text-white text-[10px] rounded-full flex items-center justify-center font-bold border-2 border-white"
+                  className="absolute -top-1 -right-1 w-4 h-4 bg-accent text-white text-[10px] rounded-full flex items-center justify-center font-bold border-2 border-white"
                 >
-                  {totalItems}
+                  {count}
                 </motion.span>
               )}
             </AnimatePresence>
           </button>
         </div>
 
-        {/* Mobile Actions - Match Image 1 */}
-        <div className="flex md:hidden items-center gap-4">
+        {/* ── Mobile: cart + hamburger ── */}
+        <div className="flex md:hidden items-center gap-3">
           <button
             onClick={() => setCartOpen(true)}
-            className="relative flex items-center justify-center w-8 h-8"
+            className="relative p-2"
+            aria-label="Giỏ hàng"
           >
-            <ShoppingBag className="w-6 h-6 text-primary" />
-            {totalItems > 0 && (
+            <ShoppingBag className="w-5 h-5 text-primary" />
+            {count > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-accent text-white text-[9px] rounded-full flex items-center justify-center font-bold">
-                {totalItems}
+                {count}
               </span>
             )}
           </button>
 
           <button
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-1"
+            onClick={() => setOpen(!open)}
+            className="p-2"
+            aria-label={open ? "Đóng menu" : "Mở menu"}
           >
-            {isMobileMenuOpen ? <X className="w-7 h-7 text-primary" /> : <Menu className="w-7 h-7 text-primary" />}
+            {open ? (
+              <X className="w-5 h-5 text-primary" />
+            ) : (
+              <Menu className="w-5 h-5 text-primary" />
+            )}
           </button>
         </div>
       </div>
 
-      {/* Mobile Drawer */}
+      {/* ── Mobile drawer ── */}
       <AnimatePresence>
-        {isMobileMenuOpen && (
+        {open && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="md:hidden absolute top-full left-0 right-0 bg-white border-t border-border mt-0 overflow-hidden"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="md:hidden overflow-hidden bg-white/98 backdrop-blur-md border-t border-border/40"
           >
-            <div className="py-8 flex flex-col items-center gap-6">
-              <Link href="/" onClick={() => setIsMobileMenuOpen(false)} className="text-xl font-serif font-bold text-primary">Trang chủ</Link>
-              <Link href="/menu" onClick={() => setIsMobileMenuOpen(false)} className="text-xl font-serif font-bold text-primary">Thực đơn</Link>
-              <div className="h-px w-12 bg-border" />
-              <p className="text-xs text-primary/40 uppercase tracking-widest font-bold">Bánh Cá Bốn Mùa</p>
+            <div className="max-w-6xl mx-auto px-6 py-4 flex flex-col gap-1">
+              <NavLink
+                href="/"
+                onClick={close}
+                className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
+                activeClassName="text-primary"
+              >
+                <Home className="w-4 h-4" />
+                Trang chủ
+              </NavLink>
+
+              <NavLink
+                href="/menu"
+                onClick={close}
+                className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
+                activeClassName="text-primary"
+              >
+                <UtensilsCrossed className="w-4 h-4" />
+                Thực đơn
+              </NavLink>
+
+              <NavLink
+                href="/profile/points"
+                onClick={close}
+                className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
+                activeClassName="text-primary"
+              >
+                <Star className="w-4 h-4" />
+                Đổi điểm
+              </NavLink>
+
+              {isLoggedIn ? (
+                <>
+                  <NavLink
+                    href="/profile/vouchers"
+                    onClick={close}
+                    className="text-sm font-medium py-2.5 flex items-center gap-2 text-foreground/80 hover:text-primary transition-colors"
+                    activeClassName="text-primary"
+                  >
+                    <Gift className="w-4 h-4" />
+                    Voucher
+                  </NavLink>
+
+                  <button
+                    onClick={handleLogout}
+                    className="text-sm font-medium py-2.5 flex items-center gap-2 text-destructive hover:text-destructive/80 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Đăng xuất
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => { openLogin(); close(); }}
+                  className="text-sm font-medium py-2.5 flex items-center gap-2 text-primary hover:text-primary/80 transition-colors"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Đăng nhập
+                </button>
+              )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-    </nav>
+    </motion.nav>
   );
 };
 

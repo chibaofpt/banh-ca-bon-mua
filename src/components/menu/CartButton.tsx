@@ -3,17 +3,15 @@
 import React from "react";
 import { ShoppingBag } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useCartStore } from "@/src/lib/store/cartStore";
-import { useUI } from "@/src/context/UIContext";
+import { useCartStore, useCartTotalItems } from "@/src/lib/store/cartStore";
 
 /**
  * CartButton is a floating action button that displays the total number of items in the cart.
  * Updated with premium styling and UIProvider connection.
  */
 const CartButton: React.FC = () => {
-  const { items } = useCartStore();
-  const { setCartOpen } = useUI();
-  const count = items.length;
+  const setCartOpen = useCartStore((s) => s.setCartOpen);
+  const count = useCartTotalItems();
 
   return (
     <button

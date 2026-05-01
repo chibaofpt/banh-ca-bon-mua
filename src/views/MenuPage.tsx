@@ -42,15 +42,15 @@ export default function MenuPage() {
 
   const filteredItems = useMemo(() => {
     if (!data) return [];
-    
+
     let items: MenuItem[] = [];
     if (activeTab === 'daily') items = data.daily;
     else if (activeTab === 'seasonal') items = data.seasonal;
-    else items = []; // Taiyaki placeholder
-    
+    else if (activeTab === 'recipe') items = data.recipe;
+
     if (!searchQuery) return items;
-    
-    return items.filter(item => 
+
+    return items.filter(item =>
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       item.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
     );
@@ -135,7 +135,6 @@ export default function MenuPage() {
             key="product-modal-root"
             item={selectedItem}
             addons={data.addons}
-            contact={data.contact}
             onClose={() => setSelectedItem(null)}
           />
         )}

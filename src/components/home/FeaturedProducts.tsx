@@ -95,7 +95,7 @@ const FeaturedProducts: React.FC = () => {
 
                 <div className="pt-4 border-t border-border flex items-center justify-between">
                   <p className="text-primary font-bold text-base flex items-center gap-1.5">
-                    <span className="text-lg">🐟</span> {item.type === 'daily' ? item.sizes.M.price : item.price} cá
+                    <span className="text-lg">🐟</span> {item.sizes?.M?.price ?? item.price ?? 0} cá
                   </p>
                 </div>
               </div>

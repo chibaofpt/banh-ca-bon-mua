@@ -9,7 +9,7 @@ const JWT_SECRET = new TextEncoder().encode(secretStr);
 /**
  * Middleware for protecting routes based on roles and JWT session.
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // We rely on the matcher to restrict calls to this middleware, 
@@ -22,6 +22,9 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/staff') ||
     pathname.startsWith('/api/admin') ||
     pathname.startsWith('/admin');
+
+  // /admin/login is public — exempt before any auth check
+  if (pathname === '/admin/login') return NextResponse.next();
 
   if (!isProtectedPath) return NextResponse.next();
 
@@ -72,16 +75,16 @@ function redirectOrUnauthorized(request: NextRequest, error: string, code: strin
     return NextResponse.json({ error, code }, { status });
   }
 
-  // Handle FORBIDDEN pages: Redirect to home or standard unauthorized page
+  // Handle FORBIDDEN pages: Redirect to appropriate login
   if (status === 403) {
     const url = request.nextUrl.clone();
     url.pathname = '/';
     return NextResponse.redirect(url);
   }
 
-  // Redirect to home for UNAUTHORIZED / SESSION_EXPIRED
+  // Redirect admin routes to /admin/login; all others to /
   const url = request.nextUrl.clone();
-  url.pathname = '/';
+  url.pathname = pathname.startsWith('/admin') ? '/admin/login' : '/';
   return NextResponse.redirect(url);
 }
 

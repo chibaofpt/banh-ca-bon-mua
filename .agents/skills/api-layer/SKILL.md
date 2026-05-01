@@ -11,19 +11,7 @@ description: >
 
 # API Layer Skill
 
-> ⚠️ All folder decisions follow `STRUCTURE.md`. If there's a conflict, STRUCTURE.md wins.
-
----
-
-## Layer Boundaries (hard rules — never violate)
-
-| Layer | Can import | Cannot import |
-|---|---|---|
-| `src/components/` | `src/lib/types/`, `src/utils/`, `src/lib/` | `src/services/`, `lib/` |
-| `src/views/` | `src/components/`, `src/services/`, `src/lib/` | `lib/` |
-| `src/services/` | `src/lib/types/`, `src/lib/api/client` | `lib/` (server-only!) |
-| `app/api/**/route.ts` | `lib/`, `src/lib/types/` | `src/components/`, `src/views/` |
-| `lib/` | other `lib/` files | `src/` |
+> Folder placement decisions → `STRUCTURE.md`. If conflict: STRUCTURE.md wins.
 
 ---
 
@@ -34,7 +22,7 @@ description: >
 - Only layer allowed to know API URLs — declare as `const URL = { ... } as const` at top of file
 - Always use `apiClient` from `src/lib/api/client.ts` — never create another Axios instance
 - Always declare return types explicitly — never let TypeScript infer from Axios response
-- Views call services. Components never call services.
+- Views call services. Components never call services directly.
 
 **Axios instance (`src/lib/api/client.ts`):**
 ```typescript
@@ -79,21 +67,17 @@ const URL = {
   byId: (id: string) => `/api/orders/${id}`,
 } as const;
 
+/** Fetch all orders for the current user */
+export async function getOrders(): Promise<Order[]> {
+  const res = await apiClient.get<ApiResponse<Order[]>>(URL.base);
+  return res.data.data;
+}
+
 /** Create a new order from cart */
 export async function createOrder(payload: CreateOrderPayload): Promise<Order> {
   const res = await apiClient.post<ApiResponse<Order>>(URL.base, payload);
   return res.data.data;
 }
-```
-
-**Usage pattern:**
-```typescript
-// app/(customer)/orders/page.tsx — entry only, no logic
-import OrdersPage from "@/src/views/OrdersPage";
-export default function Page() { return <OrdersPage />; }
-
-// src/views/OrdersPage.tsx — calls service, manages state
-// src/components/menu/MenuCard.tsx — receives props, never imports service
 ```
 
 ---
@@ -120,16 +104,28 @@ export async function POST(req: NextRequest) {
 
   const parsed = createOrderSchema.safeParse(body);
   if (!parsed.success)
-    return NextResponse.json({ error: "Invalid input", code: "VALIDATION_ERROR" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid input", code: "VALIDATION_ERROR" },
+      { status: 400 }
+    );
 
   const session = await getSession(req);
   if (!session)
-    return NextResponse.json({ error: "Unauthorized", code: "UNAUTHORIZED" }, { status: 401 });
+    return NextResponse.json(
+      { error: "Unauthorized", code: "UNAUTHORIZED" },
+      { status: 401 }
+    );
 
   if (session.role !== "CUSTOMER")
-    return NextResponse.json({ error: "Forbidden", code: "FORBIDDEN" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Forbidden", code: "FORBIDDEN" },
+      { status: 403 }
+    );
 
-  const result = await prisma.$transaction(async (tx) => { /* ... */ });
+  const result = await prisma.$transaction(async (tx) => {
+    // business logic here
+  });
+
   return NextResponse.json({ data: result }, { status: 201 });
 }
 ```
@@ -149,7 +145,7 @@ export const registerSchema = z.object({
 });
 ```
 
-**Error codes — use these exactly, never invent new ones:**
+**Error codes — use exactly, never invent new ones:**
 
 | HTTP | `code` | When |
 |---|---|---|
@@ -160,13 +156,6 @@ export const registerSchema = z.object({
 | 409 | `CONFLICT` | Duplicate (phone, token, ...) |
 | 422 | `BUSINESS_RULE_VIOLATION` | Insufficient points, expired voucher, ... |
 | 500 | `INTERNAL_ERROR` | Unexpected server error |
-
-**Critical backend rules:**
-- Server always re-fetches prices from DB — never trust client-sent prices
-- Money = integers in VND, never floats
-- Never expose `users.id` or `vouchers.id` — always use `qr_token`
-- Multi-step DB writes must use `prisma.$transaction()`
-- Every exported function needs a one-line JSDoc
 
 ---
 
@@ -191,3 +180,4 @@ export const registerSchema = z.object({
 - [ ] View at `src/views/{Name}Page.tsx` — calls service, owns state
 - [ ] Component at `src/components/{domain}/{Name}.tsx` — props only, no service imports
 - [ ] Page entry at `app/**/{route}/page.tsx` — re-exports view, zero logic
+- [ ] Page exports `metadata` with title + description

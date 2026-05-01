@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-type TabId = 'daily' | 'seasonal' | 'taiyaki';
+export type TabId = 'daily' | 'seasonal' | 'recipe';
 
 interface Tab {
   id: TabId;
@@ -17,7 +17,7 @@ interface TabBarProps {
 const tabs: Tab[] = [
   { id: 'daily', label: 'Daily' },
   { id: 'seasonal', label: 'Theo Mùa' },
-  { id: 'taiyaki', label: 'Bánh Cá' },
+  { id: 'recipe', label: 'Công Thức' },
 ];
 
 const TabBar: React.FC<TabBarProps> = ({ activeTab, setActiveTab }) => {
@@ -41,4 +41,3 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, setActiveTab }) => {
 };
 
 export default TabBar;
-export type { TabId };

@@ -227,6 +227,9 @@ model OrderItem {
   addons_price_vnd   Int              @default(0)
   product_voucher_id String?          @db.Uuid
   note               String?
+  size               String?
+  ml                 Int?
+  sweetness          SweetnessLevel   @default(QUARTER)
   addons             OrderItemAddon[]
   menu_item          MenuItem         @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   order              Order            @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -287,4 +290,12 @@ enum AddonType {
   SELECTOR
   TOGGLE
   QUANTITY
+}
+
+enum SweetnessLevel {
+  NONE
+  QUARTER
+  HALF
+  THREE_QUARTER
+  FULL
 }

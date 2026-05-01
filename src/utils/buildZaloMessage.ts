@@ -12,7 +12,7 @@ export const buildZaloMessage = (items: CartItem[]): string => {
   const lines = items.map((i) => {
     const addonStr = i.addons.length > 0 ? `\n  + ${i.addons.join(', ')}` : '';
     const qty = i.quantity > 1 ? ` x${i.quantity}` : '';
-    return `• ${i.name} | ${i.size} | Ngọt ${i.sweetness}${addonStr}${qty} — ${formatPrice(
+    return `• ${i.name} | ${i.size} | ${i.sweetness}${addonStr}${qty} — ${formatPrice(
       i.totalPrice * i.quantity
     )}`;
   });

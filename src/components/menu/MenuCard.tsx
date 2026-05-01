@@ -9,7 +9,6 @@ interface MenuCardProps {
   index: number;
   onClick: () => void;
 }
-
 const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
   return (
     <div
@@ -26,11 +25,11 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
         <h3 className="font-serif font-bold text-base text-foreground mb-2 truncate">
           {item.name}
         </h3>
-        
+
         <div className="flex flex-wrap gap-1 mb-4 mt-auto">
           {item.tags.slice(0, 2).map((tag, idx) => (
-            <span 
-              key={idx} 
+            <span
+              key={idx}
               className="text-[9px] uppercase tracking-wider font-bold px-2.5 py-1 rounded-full bg-secondary/20 text-primary border border-primary/5"
             >
               {tag}
@@ -40,7 +39,7 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
 
         <div className="pt-3 border-t border-border flex items-center justify-between">
           <p className="text-primary font-bold text-sm flex items-center gap-1.5">
-            <span className="text-base">🐟</span> {item.type === 'daily' ? item.sizes.M.price : item.price} cá
+            <span className="text-base">🐟</span> {item.sizes?.M?.price ?? item.price ?? 0} cá
           </p>
         </div>
       </div>

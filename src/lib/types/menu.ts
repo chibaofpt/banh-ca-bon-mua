@@ -1,64 +1,58 @@
-// Metadata for contact channels
-export interface ContactData {
-  zalo: string;
-  instagram: string;
-  threads: string;
-}
-
 // Pricing and volume details per size
 export interface SizeDetail {
-  ml: number;
   price: number;
+  ml: number;
 }
 
-// Items available daily (typically drinks with size options)
-export interface DailyItem {
+// A single menu item — works for daily, seasonal, and recipe categories
+export interface MenuItem {
   id: string;
   name: string;
-  description: string;
-  image: string;
-  likes: number;
+  description: string | null;
+  image: string | null;
+  category: "daily" | "seasonal" | "recipe";
+  /** Human-readable category labels, e.g. ['Hằng ngày'] */
+  tags: string[];
+  type: "daily" | "seasonal" | "recipe";
+  /** Flat price for seasonal and recipe items; null for daily (use sizes instead) */
+  price: number | null;
+  /** Size variants for daily items only; null for seasonal and recipe */
   sizes: {
     M: SizeDetail;
     L: SizeDetail;
     XL: SizeDetail;
-  };
-  type: 'daily';
-  tags: string[];
+  } | null;
 }
 
-// Special items available only during specific seasons
-export interface SeasonalItem {
+// An option within a SELECTOR or QUANTITY addon group
+export interface AddonOption {
   id: string;
-  name: string;
-  description: string;
+  label: string;
+  /** Price in VND (integer) */
   price: number;
-  image: string;
-  likes: number;
-  type: 'seasonal';
-  tags: string[];
+  is_default: boolean;
 }
 
-// Union type for all menu items
-export type MenuItem = DailyItem | SeasonalItem;
-
-// Toppings or extras added to a main item
+// An addon group returned by the API
 export interface Addon {
   id: string;
   name: string;
-  description: string;
-  price: number;
-  pricePerGram?: number;
-  maxGrams?: number;
-  image: string;
-  type?: string;
-  options?: { label: string; price: number; default?: boolean }[];
+  /** 'milk_selector' is a special SELECTOR for "Loại sữa" — rendered as a radio row */
+  type: "SELECTOR" | "TOGGLE" | "QUANTITY" | "milk_selector";
+  /** For TOGGLE addons: the single option's price in VND; null for all other types */
+  price: number | null;
+  description: string | null;
+  is_required: boolean;
+  min_quantity: number | null;
+  max_quantity: number | null;
+  /** For SELECTOR, QUANTITY, and milk_selector: the list of options; null for TOGGLE */
+  options: AddonOption[] | null;
 }
 
-// The complete menu structure as fetched from menu.json
+// The complete menu structure returned by GET /api/menu
 export interface MenuData {
-  contact: ContactData;
-  daily: DailyItem[];
-  seasonal: SeasonalItem[];
+  daily: MenuItem[];
+  seasonal: MenuItem[];
+  recipe: MenuItem[];
   addons: Addon[];
 }

@@ -1,10 +1,12 @@
 // Cart types — will be expanded when cart feature is fully implemented
+export type SweetnessValue = "Lạt" | "Vừa" | "Ngọt" | "Rất ngọt" | "Ngọt Điên";
+
 export interface CartItem {
   id: string;
   name: string;
   size: string;        // "Cá Con" | "Cá Vừa" | "Cá Lớn" | "Một size"
   ml: number;
-  sweetness: string;
+  sweetness: SweetnessValue;
   addons: string[];
   basePrice: number;
   addonsPrice: number;

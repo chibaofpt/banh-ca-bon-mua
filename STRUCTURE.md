@@ -1,252 +1,200 @@
-# Project Structure — Bánh Cá Bốn Mùa
+# Bánh Cá Bốn Mùa — Project Structure
 
-> This file defines the canonical folder layout for the entire project.
-> Read this before creating any new file or directory.
-> When in doubt about where something goes — check here first, then ask.
-
-## Stack
-- Next.js 16 App Router
-- TypeScript strict
-- Tailwind CSS
-- Zustand (cart state)
-- Prisma + Supabase PostgreSQL (Phase 1+)
-- jose (auth, Phase 1+)
-- Zod + React Hook Form (Phase 1+)
+> Read this file before creating or moving any file or directory.
 
 ---
 
-## Folder Structure
+## Folder Layout
 
 ```
-app/                              # Next.js App Router — entry points only
-  (public)/                       # public-facing pages, no auth required
-    page.tsx                      # landing page → imports from src/views/HomePage
+app/                              # Next.js App Router — entry points only, zero logic
+  (public)/
+    page.tsx                      # → src/views/HomePage
     menu/
-      page.tsx                    # menu browsing → imports from src/views/MenuPage
-  (auth)/                         # Phase 1
+      page.tsx                    # → src/views/MenuPage
+  (auth)/
     login/
-      page.tsx
+      page.tsx                    # → src/views/LoginPage
     register/
-      page.tsx
-  (customer)/                     # Phase 3+ — requires CUSTOMER role
-    profile/
-      page.tsx
-    orders/
-      page.tsx
-      [id]/
-        page.tsx
-    points/
-      page.tsx
-    vouchers/
-      page.tsx
-  (staff)/                        # Phase 4 — requires STAFF or ADMIN role
-    scan/
-      page.tsx
-    orders/
-      page.tsx
-    points/
-      page.tsx
-  (admin)/                        # Phase 4 — requires ADMIN role
-    dashboard/
-      page.tsx
-    menu/
-      page.tsx
-    voucher-packages/
-      page.tsx
-    points-log/
-      page.tsx
-  api/                            # Route handlers — business logic delegates to lib/
+      page.tsx                    # → src/views/RegisterPage
+  (customer)/                     # Phase 3+ — CUSTOMER role required
+    profile/page.tsx
+    orders/page.tsx
+    orders/[id]/page.tsx
+    points/page.tsx
+    vouchers/page.tsx
+  (admin-public)/
+    admin/
+      login/
+        page.tsx                  # → src/views/admin/AdminLoginPage
+  (admin-shell)/
+    layout.tsx                    # Shared shell: top bar + bottom tab bar
+    admin/                        # ADMIN only
+      menu/page.tsx               # → src/views/admin/AdminMenuPage
+      voucher-packages/page.tsx   # → src/views/admin/AdminVoucherPackagesPage
+      points-log/page.tsx         # → src/views/admin/AdminPointsLogPage
+    staff/                        # STAFF or ADMIN
+      orders/page.tsx             # → src/views/staff/StaffOrdersPage
+      orders-list/page.tsx        # → src/views/staff/StaffOrdersListPage
+      scan/page.tsx               # → src/views/staff/StaffScanPage
+  api/                            # Route handlers — delegate business logic to lib/
     auth/
       register/route.ts
       login/route.ts
       logout/route.ts
       refresh/route.ts
-    menu/
-      route.ts                    # Phase 2: replaces static menu.json
-    orders/
-      route.ts
-      [id]/route.ts
-    profile/
-      route.ts
-      points/route.ts
-      vouchers/
-        route.ts
-        redeem/route.ts
-    staff/
-      scan/route.ts
-      vouchers/[id]/redeem/route.ts
-      points/add/route.ts
-    admin/
-      orders/[id]/status/route.ts
-      menu/
-        route.ts
-        [id]/route.ts
-      addon-groups/route.ts
-      voucher-packages/route.ts
-      points-log/
-        route.ts
-        [id]/reverse/route.ts
-      promotions/route.ts         # Phase 5 only
+    menu/route.ts
+    orders/route.ts
+    orders/[id]/route.ts
+    profile/route.ts
+    profile/points/route.ts
+    profile/vouchers/route.ts
+    profile/vouchers/redeem/route.ts
+    staff/orders/route.ts
+    staff/scan/route.ts
+    staff/vouchers/[id]/redeem/route.ts
+    admin/points/add/route.ts
+    admin/orders/[id]/status/route.ts
+    admin/menu/route.ts
+    admin/menu/[id]/route.ts
+    admin/addon-groups/route.ts
+    admin/addon-groups/[id]/route.ts
+    admin/menu-item-addons/route.ts
+    admin/voucher-packages/route.ts
+    admin/voucher-packages/[id]/route.ts
+    admin/points-log/route.ts
+    admin/points-log/[id]/reverse/route.ts
+    admin/promotions/route.ts     # Phase 5 only
 
-src/                              # Frontend source — never import lib/ from here
-  views/                          # Full page compositions — import components + services
+src/                              # Frontend — never import lib/ from here
+  views/
     HomePage.tsx
     MenuPage.tsx
-    LoginPage.tsx                 # Phase 1
-    RegisterPage.tsx              # Phase 1
+    LoginPage.tsx
+    RegisterPage.tsx
     ProfilePage.tsx               # Phase 3
     OrdersPage.tsx                # Phase 3
     PointsPage.tsx                # Phase 4
     VouchersPage.tsx              # Phase 4
-
-  components/                     # UI only — no business logic, no data fetching
-    common/                       # reusable across the whole app
+    admin/
+      AdminLoginPage.tsx
+      AdminMenuPage.tsx
+      AdminVoucherPackagesPage.tsx
+      AdminPointsLogPage.tsx
+    staff/
+      StaffOrdersPage.tsx
+      StaffOrdersListPage.tsx
+      StaffScanPage.tsx
+  components/
+    common/
       Button.tsx
       Badge.tsx
       Modal.tsx
       Drawer.tsx
-    # shadcn/ui is not used in this project.
-    # Write primitives directly with Tailwind when needed.
-    # Button, Input, Modal, Drawer → place in common/ or the relevant domain folder.
-    home/                         # HomePage only
+    home/
       VideoHero.tsx
       IntroSection.tsx
       FeatureCard.tsx
-    menu/                         # MenuPage only
+    menu/
       MenuCard.tsx
       ProductModal.tsx
       CartButton.tsx
       CartDrawer.tsx
       TabBar.tsx
-    auth/                         # Phase 1
+    auth/
       PhoneInput.tsx
       PasswordInput.tsx
-
-  services/                       # Data fetching — the only layer that knows API URLs
-    menuService.ts                # fetchMenu() — swap URL in Phase 2, nothing else changes
+    admin/
+      MenuItemForm.tsx
+      MenuItemCard.tsx
+      VoucherPackageForm.tsx
+      PointsLogTable.tsx
+    staff/
+      StaffMenuCard.tsx
+      StaffCartDrawer.tsx
+      StaffOrderForm.tsx
+      AddonModal.tsx
+      QRScannerModal.tsx
+      OrderCard.tsx
+  services/
+    menuService.ts
     orderService.ts               # Phase 3
-    authService.ts                # Phase 1
+    authService.ts
     profileService.ts             # Phase 3
     voucherService.ts             # Phase 4
-
+    adminMenuService.ts
+    adminVoucherService.ts
+    adminPointsService.ts
+    adminOrderService.ts
+    staffOrderService.ts
+    staffOrdersListService.ts
+    staffScanService.ts
   lib/
+    api/
+      client.ts                   # Single Axios instance — always import from here
     store/
-      cartStore.ts                # Zustand cart store — localStorage persisted
+      cartStore.ts                # Zustand cart — localStorage persisted
     hooks/
       useScrollProgress.ts
       useBodyScrollLock.ts
     types/
-      menu.ts                     # DailyItem, SeasonalItem, Addon, MenuData
-      cart.ts                     # CartItem, CartStore
+      api.ts                      # ApiResponse<T>, ApiError
+      menu.ts
+      cart.ts
       order.ts                    # Phase 3
-      user.ts                     # Phase 1
-
+      user.ts
   utils/
-    formatPrice.ts                # formatPrice(price) → "🐟 {price} cá"
+    formatPrice.ts                # formatPrice(vnd: number) → "🐟 {vnd/1000} cá" — input is VND integer
     deriveTags.ts
-    buildZaloMessage.ts           # pre-fill Zalo string from cart (used until Phase 3)
+    buildZaloMessage.ts
 
 public/
   data/
-    menu.json                     # static data — replaced by /api/menu in Phase 2
+    menu.json                     # Static — replaced by /api/menu in Phase 2
   demo.mp4
 
-lib/                              # Backend shared — server only, NEVER import in src/
-  prisma.ts                       # singleton PrismaClient
+lib/                              # Backend only — server-side, NEVER import in src/
+  prisma.ts
   auth.ts                         # signJwt, verifyJwt, getSession
-  sms.ts                          # ESMS wrapper (console.log in dev)
-  storage.ts                      # Supabase Storage helpers
-  validations/                    # Zod schemas — one file per domain
+  sms.ts
+  storage.ts                      # Supabase Storage helpers — bucket: menu-images
+  validations/
     auth.ts
     menu.ts
     order.ts
     voucher.ts
     points.ts
 
-middleware.ts                     # JWT verification, route protection
-prisma/
-  schema.prisma                   # all 15 tables
-.env.local                        # secrets — never commit
-.env.local.example                # template — commit this
-AGENTS.md                         # source of truth — read first every session
-CLAUDE.md                         # agent behavior rules
-STRUCTURE.md                      # this file
+middleware.ts
+prisma/schema.prisma
+.env.local
+.env.local.example
 ```
 
 ---
 
-## Pattern Rules
+## Layer Rules
 
-### app/**/page.tsx — entry only
-```tsx
-// app/(public)/page.tsx
-import HomePage from '@/src/views/HomePage'
-export default function Page() { return <HomePage /> }
-
-// With metadata (required on every page)
-export const metadata = {
-  title: 'Bánh Cá Bốn Mùa — Matcha Takeaway',
-  description: 'Đồ uống matcha tươi ngon tại ...',
-}
-```
-
-### src/views/ — composition only
-- Import components, services, hooks
-- Handle page-level state (activeTab, selectedItem, loading)
-- No JSX styling logic — delegate to components
-- No direct fetch calls — use services
-
-### src/components/ — UI only
-- Receive props, render UI
-- No data fetching
-- No imports from `src/services/` or `lib/`
-
-### src/services/ — data layer
-```ts
-// src/services/menuService.ts
-// Phase 0-1: static JSON
-export const fetchMenu = async (): Promise<MenuData> => {
-  const res = await fetch('/data/menu.json')
-  return res.json()
-}
-
-// Phase 2: just swap the URL — nothing else changes
-export const fetchMenu = async (): Promise<MenuData> => {
-  const res = await fetch('/api/menu')
-  return res.json()
-}
-```
-
-### lib/ — backend only
-```ts
-// lib/validations/order.ts
-// lib/auth.ts
-// lib/prisma.ts
-// Never import these inside src/ — they are server-only
-```
-
-### app/api/**/route.ts — route handlers
-```ts
-// Validate input with Zod (lib/validations/)
-// Call lib/ functions for business logic
-// Return { data: T } on success, { error: string, code: string } on failure
-// Never inline business logic here — delegate to lib/
-```
+| Layer | Rule |
+|---|---|
+| `app/**/page.tsx` | Entry only — import view component, export metadata, no logic |
+| `src/views/` | Composition — import components + services + hooks. No direct fetch calls. |
+| `src/components/` | UI only — receive props, render. No fetching, no importing services/lib. |
+| `src/services/` | Only layer that knows API URLs. Use `apiClient` from `src/lib/api/client.ts`. |
+| `lib/` | Backend only. Never import inside `src/`. |
+| `app/api/**/route.ts` | Validate with Zod → delegate to `lib/` → return standard shape |
 
 ---
 
-## Naming Conventions
+## Import Boundaries
 
-| Type | Convention | Example |
+| From | Can import | Cannot import |
 |---|---|---|
-| Pages (views) | PascalCase + Page suffix | `HomePage`, `MenuPage` |
-| Components | PascalCase | `MenuCard`, `VideoHero` |
-| Services | camelCase + Service suffix | `menuService`, `orderService` |
-| Hooks | camelCase + use prefix | `useScrollProgress` |
-| Utils | camelCase | `formatPrice`, `deriveTags` |
-| Types files | camelCase | `menu.ts`, `cart.ts` |
-| Route handlers | `route.ts` | Next.js convention |
-| Zod schemas | camelCase, domain-named | `lib/validations/auth.ts` |
+| `src/components/` | `src/lib/types/`, `src/utils/` | `src/services/`, `lib/` |
+| `src/views/` | `src/components/`, `src/services/`, `src/lib/` | `lib/` |
+| `src/services/` | `src/lib/types/`, `src/lib/api/client` | `lib/` |
+| `app/api/**/route.ts` | `lib/`, `src/lib/types/` | `src/components/`, `src/views/` |
+| `lib/` | other `lib/` files | `src/` |
 
 ---
 
@@ -258,22 +206,26 @@ export const fetchMenu = async (): Promise<MenuData> => {
 ```
 
 ```ts
-import HomePage from '@/src/views/HomePage'
-import { fetchMenu } from '@/src/services/menuService'
-import { formatPrice } from '@/src/utils/formatPrice'
-import { useCartStore } from '@/src/lib/store/cartStore'
-import { getSession } from '@/lib/auth'          // server only
-import { prisma } from '@/lib/prisma'             // server only
+import HomePage          from '@/src/views/HomePage'
+import { fetchMenu }     from '@/src/services/menuService'
+import { formatPrice }   from '@/src/utils/formatPrice'
+import { useCartStore }  from '@/src/lib/store/cartStore'
+import { apiClient }     from '@/src/lib/api/client'
+import { getSession }    from '@/lib/auth'     // server only
+import { prisma }        from '@/lib/prisma'   // server only
 ```
 
 ---
 
-## Key Boundaries
+## Naming Conventions
 
-| From | Can import | Cannot import |
+| Type | Convention | Example |
 |---|---|---|
-| `src/components/` | `src/lib/`, `src/utils/`, `src/lib/types/` | `src/services/`, `lib/` |
-| `src/views/` | `src/components/`, `src/services/`, `src/lib/` | `lib/` |
-| `src/services/` | `src/lib/types/` | `lib/` |
-| `app/api/**/route.ts` | `lib/`, `src/lib/types/` | `src/components/`, `src/views/` |
-| `lib/` | other `lib/` files | `src/` |
+| Views | PascalCase + Page suffix | `HomePage`, `AdminMenuPage` |
+| Components | PascalCase | `MenuCard`, `OrderCard` |
+| Services | camelCase + Service suffix | `menuService`, `staffScanService` |
+| Hooks | camelCase + use prefix | `useScrollProgress` |
+| Utils | camelCase | `formatPrice` |
+| Type files | camelCase | `menu.ts`, `cart.ts` |
+| Route handlers | `route.ts` | Next.js convention |
+| Zod schemas | camelCase, domain-named | `lib/validations/auth.ts` |

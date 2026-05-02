@@ -9,15 +9,30 @@ interface MenuCardProps {
   index: number;
   onClick: () => void;
 }
+
+/** MenuCard — displays a single menu item in the customer menu grid. */
 const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
+  const displayPrice =
+    item.category === "daily"
+      ? (item.sizes.find((s) => s.size === "L")?.price_vnd ?? 0)
+      : (item.price_vnd ?? 0);
+
   return (
     <div
       onClick={onClick}
       className="group flex flex-col h-full bg-white rounded-4xl overflow-hidden border border-border shadow-sm hover:shadow-lg active:scale-[0.98] transition-all duration-300 cursor-pointer"
     >
-      {/* Image / Icon Area - Match screenshot light green */}
+      {/* Image / Icon Area */}
       <div className="aspect-4/3 bg-[#d9e4d4] relative overflow-hidden flex items-center justify-center p-10">
-        <Coffee className="w-full h-full text-[#b8c9b4] group-hover:scale-110 transition-transform duration-500" />
+        {item.image_url ? (
+          <img
+            src={item.image_url}
+            alt={item.name}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <Coffee className="w-full h-full text-[#b8c9b4] group-hover:scale-110 transition-transform duration-500" />
+        )}
       </div>
 
       {/* Content Area */}
@@ -26,20 +41,9 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
           {item.name}
         </h3>
 
-        <div className="flex flex-wrap gap-1 mb-4 mt-auto">
-          {item.tags.slice(0, 2).map((tag, idx) => (
-            <span
-              key={idx}
-              className="text-[9px] uppercase tracking-wider font-bold px-2.5 py-1 rounded-full bg-secondary/20 text-primary border border-primary/5"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-
-        <div className="pt-3 border-t border-border flex items-center justify-between">
+        <div className="pt-3 border-t border-border flex items-center justify-between mt-auto">
           <p className="text-primary font-bold text-sm flex items-center gap-1.5">
-            <span className="text-base">🐟</span> {item.sizes?.M?.price ?? item.price ?? 0} cá
+            <span className="text-base">🐟</span> {displayPrice / 1000} ca
           </p>
         </div>
       </div>

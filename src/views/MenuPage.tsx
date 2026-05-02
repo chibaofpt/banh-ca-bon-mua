@@ -43,16 +43,13 @@ export default function MenuPage() {
   const filteredItems = useMemo(() => {
     if (!data) return [];
 
-    let items: MenuItem[] = [];
-    if (activeTab === 'daily') items = data.daily;
-    else if (activeTab === 'seasonal') items = data.seasonal;
-    else if (activeTab === 'recipe') items = data.recipe;
+    const items: MenuItem[] = data[activeTab] ?? [];
 
     if (!searchQuery) return items;
 
     return items.filter(item =>
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+      (item.description ?? "").toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [data, activeTab, searchQuery]);
 
@@ -129,16 +126,13 @@ export default function MenuPage() {
         </div>
       </div>
 
-      <AnimatePresence>
-        {selectedItem && data && (
+      {selectedItem && (
           <ProductModal
             key="product-modal-root"
             item={selectedItem}
-            addons={data.addons}
             onClose={() => setSelectedItem(null)}
           />
         )}
-      </AnimatePresence>
 
       <CartButton />
       <CartDrawer />

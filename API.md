@@ -121,6 +121,7 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | `/api/staff/orders` | POST | Create order at counter (status = COMPLETED immediately) |
 | `/api/staff/scan` | GET | Resolve QR token → user or voucher |
 | `/api/staff/vouchers/[id]/redeem` | PATCH | Mark voucher REDEEMED offline |
+| `/api/staff/users` | GET | Lookup customer by phone number |
 
 ### Admin — ADMIN only
 
@@ -169,9 +170,13 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
       id: string
       name: string
       description: string | null
-      price_vnd: number
+      price_vnd: number | null     // null for daily items — use sizes instead
       image_url: string | null
       sort_order: number
+      sizes: {                     // present and always 3 entries for daily items; empty array for seasonal/recipe
+        size: "M" | "L" | "XL"
+        price_vnd: number
+      }[]
       addon_groups: {
         id: string
         name: string
@@ -199,6 +204,7 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
   items: {
     menu_item_id: string
     quantity: number
+    size?: "M" | "L" | "XL"        // required for daily items, omitted for seasonal/recipe
     sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL"
     note?: string
     addon_option_ids: { option_id: string, quantity: number }[]
@@ -219,6 +225,7 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
   items: {
     menu_item_id: string
     quantity: number
+    size?: "M" | "L" | "XL"      // required for daily items, omitted for seasonal/recipe
     sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL"
     note?: string                 // custom instructions (e.g. "ít đá")
     addon_option_ids: { option_id: string, quantity: number }[]
@@ -235,6 +242,27 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 // Request
 { package_id: string }
 ```
+### `GET /api/staff/users?phone=xxx`
+​```ts
+// Query param
+// phone: string — normalized to +84 by server before lookup
+
+// Response — found
+{
+  data: {
+    found: true
+    name: string
+    phone_number: string
+  }
+}
+
+// Response — not found
+{
+  data: {
+    found: false
+  }
+}
+​```
 
 ### `GET /api/staff/scan?token=xxx`
 ```ts
@@ -291,13 +319,19 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 
 ## Business Logic Notes
 
-### Auth
+### Menu
+- `GET /api/admin/menu` returns all items including `is_available = false`, with `sizes` array (same shape as public menu — 3 entries for `daily`, empty for others)
+- `POST /api/admin/menu` for `daily` items: body must include `sizes: { size, price_vnd }[]` with all 3 of M/L/XL. Created in a single `prisma.$transaction()`.
+- `PUT /api/admin/menu/[id]` for `daily` items: body may include `sizes` array to update individual size prices. Each entry is an upsert on `(menu_item_id, size)`.
+- `price_vnd` is omitted (or null) in create/update body for `daily` items — server ignores it. Required (non-null integer) for `seasonal`/`recipe`.
 - Phone normalized to `+84` before storage: `"0912345678"` → `"+84912345678"`
 - Timing-safe: always run bcrypt compare even if user not found (prevents phone enumeration)
 - Ghost user register: check `password_hash = "GHOST_USER_NO_PASSWORD"` before insert
 
 ### Orders
 - All order creation: validate + re-fetch prices from DB in `prisma.$transaction()`
+- For `daily` items: `size` is required — resolve `unit_price_vnd` from `menu_item_sizes` where `(menu_item_id, size)` matches. Validation error if size missing or not found.
+- For `seasonal`/`recipe` items: `size` must be absent — resolve `unit_price_vnd` from `menu_items.price_vnd`.
 - Customer order (`POST /api/orders`): status default = `PENDING`
 - Staff order (`POST /api/staff/orders`): status = `COMPLETED` immediately, points awarded at creation
 - DISCOUNT voucher: `discount_vnd = subtotal_vnd × percent / 100` or fixed amount. If `discount_vnd > subtotal_vnd` → `total_vnd = 0`, no error.

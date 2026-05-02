@@ -30,6 +30,7 @@
 | `OrderStatus` | `PENDING`, `CONFIRMED`, `READY`, `COMPLETED`, `CANCELLED` |
 | `AddonType` | `SELECTOR`, `TOGGLE`, `QUANTITY` |
 | `SweetnessLevel` | `NONE`, `QUARTER`, `HALF`, `THREE_QUARTER`, `FULL` |
+| `Size` | `M`, `L`, `XL` |
 
 ---
 
@@ -47,7 +48,7 @@ Frontend displays Vietnamese labels, DB stores enum keys — never store Vietnam
 
 ---
 
-## Tables (15 total)
+## Tables (16 total)
 
 ### users
 - `id` uuid PK
@@ -83,12 +84,20 @@ No FK to users — phone may not have a user row yet during registration.
 - `id` uuid PK
 - `name` string
 - `description` string nullable
-- `price_vnd` int — integer VND
-- `category` string
+- `price_vnd` int nullable — null for `daily` items (prices stored per-size in `menu_item_sizes`); integer VND for `seasonal` and `recipe`
+- `category` string — one of `daily` | `seasonal` | `recipe`. Only `daily` items have sizes.
 - `image_url` string nullable — Supabase Storage public URL
-- `is_available` bool — default true. Soft delete = set false.
+- `is_available` bool — default true. Soft delete = set false. For daily items, toggles all 3 sizes simultaneously.
 - `sort_order` int — default 0
 - `created_at` timestamp
+
+### menu_item_sizes
+Stores M/L/XL prices for `daily` category items only. One row per size per menu item (always 3 rows per daily item, created in same transaction as the parent).
+- `id` uuid PK
+- `menu_item_id` uuid FK → menu_items (cascade delete)
+- `size` Size — `M` | `L` | `XL`
+- `price_vnd` int — integer VND, never null
+- Composite unique: (`menu_item_id`, `size`)
 
 ### addon_groups
 Reusable across menu items via junction table.
@@ -136,7 +145,8 @@ One order can carry both simultaneously.
 - `order_id` uuid FK → orders (cascade delete)
 - `menu_item_id` uuid FK → menu_items
 - `quantity` int
-- `unit_price_vnd` int — snapshot of `menu_item.price_vnd` at order time. 0 if PRODUCT voucher.
+- `size` Size nullable — required for `daily` items, null for `seasonal`/`recipe`
+- `unit_price_vnd` int — snapshot of the resolved price at order time (from `menu_item_sizes.price_vnd` for daily, or `menu_items.price_vnd` for others). 0 if PRODUCT voucher.
 - `addons_price_vnd` int — total addon cost for this line item
 - `product_voucher_id` uuid FK nullable → vouchers
 - `sweetness` SweetnessLevel — default `QUARTER`

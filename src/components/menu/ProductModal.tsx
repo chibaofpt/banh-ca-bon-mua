@@ -3,160 +3,153 @@
 import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Minus, Plus } from "lucide-react";
-import type { MenuItem, Addon, AddonOption } from "@/src/lib/types/menu";
-import type { SweetnessValue } from "@/src/lib/types/cart";
+import type { MenuItem, AddonGroup, SweetnessLevel } from "@/src/lib/types/menu";
 import { useCartStore } from "@/src/lib/store/cartStore";
 import { cn } from "@/src/lib/utils";
 
-const SWEETNESS_OPTIONS: SweetnessValue[] = ["Lạt", "Vừa", "Ngọt", "Rất ngọt", "Ngọt Điên"];
+const SWEETNESS_OPTIONS: { label: string; value: SweetnessLevel }[] = [
+  { label: "Lat", value: "NONE" },
+  { label: "It ngot", value: "QUARTER" },
+  { label: "Vua", value: "HALF" },
+  { label: "Ngot", value: "THREE_QUARTER" },
+  { label: "Rat ngot", value: "FULL" },
+];
+
 const SIZE_LABELS: Record<string, string> = {
-  M: "Cá Con",
-  L: "Cá Vừa",
-  XL: "Cá Lớn",
+  M: "Ca Con",
+  L: "Ca Vua",
+  XL: "Ca Lon",
 };
 
 interface ProductModalProps {
   item: MenuItem;
-  addons: Addon[];
   onClose: () => void;
 }
 
-const ProductModal: React.FC<ProductModalProps> = ({ item, addons, onClose }) => {
+const ProductModal: React.FC<ProductModalProps> = ({ item, onClose }) => {
   const { addItem } = useCartStore();
-  const [selectedSize, setSelectedSize] = useState<"M" | "L" | "XL">("M");
-  const [selectedSweetness, setSelectedSweetness] = useState<SweetnessValue>("Vừa");
-  /** IDs of enabled TOGGLE addons */
-  const [enabledToggles, setEnabledToggles] = useState<Set<string>>(new Set());
+  const [selectedSize, setSelectedSize] = useState<"M" | "L" | "XL">("L");
+  const [selectedSweetness, setSelectedSweetness] = useState<SweetnessLevel>("HALF");
+  const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(() =>
+    item.addon_groups.flatMap((g) =>
+      g.options.filter((o) => o.is_default).map((o) => o.id)
+    )
+  );
+  const [quantityMap, setQuantityMap] = useState<Record<string, number>>(() =>
+    Object.fromEntries(
+      item.addon_groups
+        .filter((g) => g.type === "QUANTITY")
+        .map((g) => [g.id, 0])
+    )
+  );
   const [quantity, setQuantity] = useState(1);
-  /** Matcha powder quantity (0–3 grams) */
-  const [matchaGrams, setMatchaGrams] = useState(0);
 
-  // ── Identify special addon groups ─────────────────────────────────────────
-  const milkAddon = useMemo(
-    () => addons.find((a) => a.type === "milk_selector"),
-    [addons]
+  // ── Identify special addon groups ─────────────────────────────────────
+
+  const milkGroup: AddonGroup | undefined = useMemo(
+    () => item.addon_groups.find((g) => g.name === "Loai sua"),
+    [item.addon_groups]
   );
 
-  const matchaAddon = useMemo(
-    () => addons.find((a) => a.name === "Thêm bột matcha" && a.type === "QUANTITY"),
-    [addons]
+  const quantityGroups = useMemo(
+    () => item.addon_groups.filter((g) => g.type === "QUANTITY"),
+    [item.addon_groups]
   );
 
-  const toggleAddons = useMemo(
-    () => addons.filter((a) => a.type === "TOGGLE"),
-    [addons]
+  const selectorGroups = useMemo(
+    () => item.addon_groups.filter((g) => g.type === "SELECTOR" && g.name !== "Loai sua"),
+    [item.addon_groups]
   );
 
-  // ── Milk: default option is the one with is_default: true ─────────────────
-  const defaultMilkOption: AddonOption | null = useMemo(() => {
-    if (!milkAddon?.options) return null;
-    return milkAddon.options.find((o) => o.is_default) ?? milkAddon.options[0] ?? null;
-  }, [milkAddon]);
-
-  const [selectedMilkId, setSelectedMilkId] = useState<string>(
-    () => defaultMilkOption?.id ?? ""
+  const toggleGroups = useMemo(
+    () => item.addon_groups.filter((g) => g.type === "TOGGLE"),
+    [item.addon_groups]
   );
 
-  // When default option resolves after mount, sync state
-  const resolvedMilkId = selectedMilkId || defaultMilkOption?.id || "";
+  // ── Milk: find selected option ─────────────────────────────────────────
 
-  // ── Base price ────────────────────────────────────────────────────────────
+  const selectedMilkId = milkGroup
+    ? (selectedOptionIds.find((id) => milkGroup.options.some((o) => o.id === id)) ??
+      milkGroup.options.find((o) => o.is_default)?.id ??
+      milkGroup.options[0]?.id ??
+      "")
+    : "";
+
+  // ── Base price ─────────────────────────────────────────────────────────
+
   const basePrice = useMemo(() => {
-    if (item.type === "daily") {
-      return item.sizes?.[selectedSize]?.price ?? 0;
+    if (item.category === "daily") {
+      return item.sizes.find((s) => s.size === selectedSize)?.price_vnd ?? 0;
     }
-    return item.price ?? 0;
+    return item.price_vnd ?? 0;
   }, [item, selectedSize]);
 
-  // ── Milk price ────────────────────────────────────────────────────────────
-  const milkPrice = useMemo(() => {
-    if (!milkAddon?.options) return 0;
-    const selected = milkAddon.options.find((o) => o.id === resolvedMilkId);
-    if (!selected) return 0;
-    // is_default = Sữa bò = price 0; others may have a price
-    return selected.price;
-  }, [milkAddon, resolvedMilkId]);
+  // ── Addons price ───────────────────────────────────────────────────────
 
-  // ── Matcha price per gram ─────────────────────────────────────────────────
-  const matchaPricePerGram = useMemo(() => {
-    if (!matchaAddon) return 0;
-    if (item.type === "seasonal") {
-      // 20% of item price, rounded, max context up to caller
-      return Math.round((item.price ?? 0) * 0.2);
-    }
-    // daily or recipe: use DB option price (first option in the group)
-    return matchaAddon.options?.[0]?.price ?? 0;
-  }, [matchaAddon, item]);
-
-  // ── Toggle addons total price ─────────────────────────────────────────────
-  const togglesPrice = useMemo(() => {
+  const addonsPrice = useMemo(() => {
     let total = 0;
-    for (const addon of toggleAddons) {
-      if (enabledToggles.has(addon.id)) {
-        total += addon.price ?? 0;
+    for (const g of item.addon_groups) {
+      if (g.type === "QUANTITY") {
+        const qty = quantityMap[g.id] ?? 0;
+        if (qty > 0) total += qty * (g.options[0]?.price_vnd ?? 0);
+      } else {
+        for (const opt of g.options) {
+          if (selectedOptionIds.includes(opt.id)) {
+            total += opt.price_vnd;
+          }
+        }
       }
     }
     return total;
-  }, [toggleAddons, enabledToggles]);
+  }, [item.addon_groups, selectedOptionIds, quantityMap]);
 
-  // ── Total price per unit ──────────────────────────────────────────────────
-  const unitPrice = useMemo(() => {
-    return basePrice + milkPrice + matchaGrams * matchaPricePerGram + togglesPrice;
-  }, [basePrice, milkPrice, matchaGrams, matchaPricePerGram, togglesPrice]);
+  const unitPrice = basePrice + addonsPrice;
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
-  const toggleToggleAddon = (id: string) => {
-    setEnabledToggles((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  // ── Handlers ───────────────────────────────────────────────────────────
+
+  const handleSelectorChange = (group: AddonGroup, optionId: string) => {
+    const groupOptionIds = group.options.map((o) => o.id);
+    setSelectedOptionIds((prev) => [
+      ...prev.filter((id) => !groupOptionIds.includes(id)),
+      optionId,
+    ]);
+  };
+
+  const handleToggleChange = (optionId: string) => {
+    setSelectedOptionIds((prev) =>
+      prev.includes(optionId)
+        ? prev.filter((id) => id !== optionId)
+        : [...prev, optionId]
+    );
   };
 
   const handleAddToCart = () => {
     const sizeLabel =
-      item.type === "daily" ? SIZE_LABELS[selectedSize] ?? "Một size" : "Một size";
+      item.category === "daily" ? SIZE_LABELS[selectedSize] ?? "Mot size" : "Mot size";
     const sizeML =
-      item.type === "daily" ? item.sizes?.[selectedSize]?.ml ?? 0 : 0;
+      item.category === "daily"
+        ? item.sizes.find((s) => s.size === selectedSize)?.price_vnd ?? 0
+        : 0;
 
-    const addonNames: string[] = [];
-
-    // Milk label
-    if (milkAddon?.options) {
-      const milkOpt = milkAddon.options.find((o) => o.id === resolvedMilkId);
-      if (milkOpt) addonNames.push(`Sữa: ${milkOpt.label}`);
-    }
-
-    // Matcha
-    if (matchaAddon && matchaGrams > 0) {
-      addonNames.push(`Bột matcha: ${matchaGrams}g`);
-    }
-
-    // Enabled toggles
-    for (const addon of toggleAddons) {
-      if (enabledToggles.has(addon.id)) {
-        addonNames.push(addon.name);
-      }
-    }
-
-    const addonsPrice = milkPrice + matchaGrams * matchaPricePerGram + togglesPrice;
-
-    for (let i = 0; i < quantity; i++) {
-      addItem({
-        id: item.id,
-        name: item.name,
-        size: sizeLabel,
-        ml: sizeML,
-        sweetness: selectedSweetness,
-        addons: addonNames,
-        basePrice,
-        addonsPrice,
-        totalPrice: basePrice + addonsPrice,
-      });
-    }
+    addItem({
+      id: item.id,
+      name: item.name,
+      size: sizeLabel,
+      ml: sizeML,
+      sweetness: selectedSweetness === "NONE" ? "Lat" :
+                 selectedSweetness === "QUARTER" ? "It ngot" :
+                 selectedSweetness === "HALF" ? "Vua" :
+                 selectedSweetness === "THREE_QUARTER" ? "Ngot" : "Rat ngot",
+      addons: [],
+      basePrice,
+      addonsPrice,
+      totalPrice: unitPrice,
+    });
     onClose();
   };
+
+
+
 
   return (
     <AnimatePresence>
@@ -177,7 +170,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, addons, onClose }) =>
         className="fixed inset-x-0 bottom-0 z-101 max-h-[92vh] overflow-y-auto rounded-t-[2.5rem] bg-background border-t border-border shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Banner */}
+        {/* Close */}
         <button
           onClick={onClose}
           className="absolute top-6 right-6 w-10 h-10 rounded-full bg-primary/5 flex items-center justify-center transition-transform hover:rotate-90 z-10"
@@ -193,31 +186,28 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, addons, onClose }) =>
           </div>
 
           {/* Size Selector — daily items only */}
-          {item.type === "daily" && item.sizes && (
+          {item.category === "daily" && item.sizes.length > 0 && (
             <div className="mt-8">
               <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-primary/40 mb-4">
-                CHỌN SIZE
+                CHON SIZE
               </h3>
               <div className="grid grid-cols-3 gap-3">
-                {(["M", "L", "XL"] as const).map((size) => (
+                {item.sizes.map((s) => (
                   <button
-                    key={size}
-                    onClick={() => setSelectedSize(size)}
+                    key={s.size}
+                    onClick={() => setSelectedSize(s.size)}
                     className={cn(
                       "rounded-2xl border-2 py-4 px-2 text-center transition-all flex flex-col items-center justify-center gap-1",
-                      selectedSize === size
+                      selectedSize === s.size
                         ? "border-primary bg-primary/5 shadow-inner"
                         : "border-border bg-white hover:border-primary/30"
                     )}
                   >
                     <span className="block font-bold text-sm text-primary">
-                      {SIZE_LABELS[size]}
-                    </span>
-                    <span className="block text-[10px] text-primary/40 leading-none">
-                      {item.sizes[size].ml}ml
+                      {SIZE_LABELS[s.size]}
                     </span>
                     <p className="text-[11px] font-bold text-primary mt-1 flex items-center gap-1">
-                      <span className="text-sm">🐟</span> {item.sizes[size].price} cá
+                      <span className="text-sm">🐟</span> {s.price_vnd / 1000} ca
                     </p>
                   </button>
                 ))}
@@ -225,14 +215,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, addons, onClose }) =>
             </div>
           )}
 
-          {/* Flat price display — seasonal and recipe items */}
-          {item.type !== "daily" && item.price !== null && (
+          {/* Flat price — seasonal/recipe */}
+          {item.category !== "daily" && item.price_vnd !== null && (
             <div className="mt-8 flex items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-[0.2em] text-primary/40">
-                GIÁ
+                GIA
               </span>
               <span className="text-base font-bold text-primary">
-                🐟 {item.price} cá
+                🐟 {(item.price_vnd ?? 0) / 1000} ca
               </span>
             </div>
           )}
@@ -240,41 +230,39 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, addons, onClose }) =>
           {/* Sweetness */}
           <div className="mt-8">
             <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-primary/40 mb-4">
-              ĐỘ NGỌT
+              DO NGOT
             </h3>
             <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar">
               {SWEETNESS_OPTIONS.map((opt) => (
                 <button
-                  key={opt}
-                  onClick={() => setSelectedSweetness(opt)}
+                  key={opt.value}
+                  onClick={() => setSelectedSweetness(opt.value)}
                   className={cn(
                     "px-6 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-all",
-                    selectedSweetness === opt
+                    selectedSweetness === opt.value
                       ? "bg-primary text-white shadow-lg"
                       : "bg-[#d9e4d4] text-primary/70 hover:bg-[#c9d4c4]"
                   )}
                 >
-                  {opt}
+                  {opt.label}
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Milk Selector — horizontal radio row, exactly one selected at all times */}
-          {milkAddon?.options && milkAddon.options.length > 0 && (
+          {/* Milk Selector */}
+          {milkGroup && milkGroup.options.length > 0 && (
             <div className="mt-8">
               <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-primary/40 mb-4">
-                LOẠI SỮA
+                LOAI SUA
               </h3>
               <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                {milkAddon.options.map((opt) => {
-                  const isSelected = resolvedMilkId === opt.id;
+                {milkGroup.options.map((opt) => {
+                  const isSelected = selectedMilkId === opt.id;
                   return (
                     <button
                       key={opt.id}
-                      onClick={() => {
-                        if (!isSelected) setSelectedMilkId(opt.id);
-                      }}
+                      onClick={() => handleSelectorChange(milkGroup, opt.id)}
                       className={cn(
                         "flex-shrink-0 flex flex-col items-center rounded-2xl border-2 px-5 py-3 text-center transition-all min-w-[90px]",
                         isSelected
@@ -286,7 +274,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, addons, onClose }) =>
                         {opt.label}
                       </span>
                       <span className="text-[10px] text-primary/40 mt-1">
-                        {opt.price === 0 ? "Miễn phí" : `+${opt.price} 🐟`}
+                        {opt.price_vnd === 0 ? "Mien phi" : `+${opt.price_vnd / 1000} 🐟`}
                       </span>
                     </button>
                   );
@@ -295,80 +283,120 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, addons, onClose }) =>
             </div>
           )}
 
-          {/* Matcha Powder stepper */}
-          {matchaAddon && (
-            <div className="mt-8">
+          {/* Other SELECTOR groups */}
+          {selectorGroups.map((group) => (
+            <div key={group.id} className="mt-8">
               <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-primary/40 mb-4">
-                {matchaAddon.name.toUpperCase()}
+                {group.name.toUpperCase()}{group.is_required ? " *" : ""}
               </h3>
-              <div className="flex items-center justify-between rounded-2xl border-2 border-border bg-white px-5 py-4">
-                <div>
-                  <span className="font-bold text-sm text-primary">Bột matcha</span>
-                  <p className="text-[10px] text-primary/40 mt-1">
-                    {matchaPricePerGram > 0
-                      ? `${matchaPricePerGram} 🐟 / gram`
-                      : "Miễn phí"}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3 bg-[#d9e4d4] rounded-xl px-3 py-2">
-                  <button
-                    onClick={() => setMatchaGrams(Math.max(0, matchaGrams - 1))}
-                    className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center hover:bg-white transition-colors"
-                  >
-                    <Minus className="w-3 h-3 text-primary" />
-                  </button>
-                  <span className="text-sm font-bold w-4 text-center text-primary">
-                    {matchaGrams}
-                  </span>
-                  <button
-                    onClick={() =>
-                      setMatchaGrams(
-                        Math.min(
-                          matchaAddon.max_quantity ?? 3,
-                          matchaGrams + 1
-                        )
-                      )
-                    }
-                    className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center hover:bg-white transition-colors"
-                  >
-                    <Plus className="w-3 h-3 text-primary" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TOGGLE addons */}
-          {toggleAddons.length > 0 && (
-            <div className="mt-8">
-              <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-primary/40 mb-4">
-                THÊM VÀO BỤNG CÁ 🐟
-              </h3>
-              <div className="space-y-3">
-                {toggleAddons.map((addon) => (
-                  <button
-                    key={addon.id}
-                    onClick={() => toggleToggleAddon(addon.id)}
-                    className={cn(
-                      "w-full flex items-center justify-between rounded-2xl border-2 px-5 py-4 text-left transition-all",
-                      enabledToggles.has(addon.id)
-                        ? "border-primary bg-primary/5 shadow-inner"
-                        : "border-border bg-white hover:border-primary/30"
-                    )}
-                  >
-                    <div>
-                      <span className="font-bold text-sm text-primary">{addon.name}</span>
-                      {addon.description && (
-                        <span className="block text-[10px] text-primary/40 mt-1">
-                          {addon.description}
+              <div className="space-y-2">
+                {group.options.map((opt) => {
+                  const isSelected = selectedOptionIds.includes(opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => handleSelectorChange(group, opt.id)}
+                      className={cn(
+                        "w-full flex items-center justify-between rounded-2xl border-2 px-5 py-3 text-left transition-all",
+                        isSelected
+                          ? "border-primary bg-primary/5 shadow-inner"
+                          : "border-border bg-white hover:border-primary/30"
+                      )}
+                    >
+                      <span className="font-bold text-sm text-primary">{opt.label}</span>
+                      {opt.price_vnd > 0 && (
+                        <span className="text-sm font-bold text-primary">
+                          +{opt.price_vnd / 1000} 🐟
                         </span>
                       )}
-                    </div>
-                    <span className="text-sm font-bold text-primary">
-                      +{addon.price ?? 0} 🐟
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          {/* QUANTITY groups */}
+          {quantityGroups.map((group) => {
+            const qty = quantityMap[group.id] ?? 0;
+            const max = group.max_quantity ?? 10;
+            return (
+              <div key={group.id} className="mt-8">
+                <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-primary/40 mb-4">
+                  {group.name.toUpperCase()}
+                </h3>
+                <div className="flex items-center justify-between rounded-2xl border-2 border-border bg-white px-5 py-4">
+                  <div>
+                    <span className="font-bold text-sm text-primary">{group.name}</span>
+                    {group.options[0] && group.options[0].price_vnd > 0 && (
+                      <p className="text-[10px] text-primary/40 mt-1">
+                        {group.options[0].price_vnd / 1000} 🐟 / gram
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 bg-[#d9e4d4] rounded-xl px-3 py-2">
+                    <button
+                      onClick={() =>
+                        setQuantityMap((prev) => ({
+                          ...prev,
+                          [group.id]: Math.max(0, qty - 1),
+                        }))
+                      }
+                      className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center hover:bg-white transition-colors"
+                    >
+                      <Minus className="w-3 h-3 text-primary" />
+                    </button>
+                    <span className="text-sm font-bold w-4 text-center text-primary">
+                      {qty}
                     </span>
-                  </button>
-                ))}
+                    <button
+                      onClick={() =>
+                        setQuantityMap((prev) => ({
+                          ...prev,
+                          [group.id]: Math.min(max, qty + 1),
+                        }))
+                      }
+                      className="w-7 h-7 rounded-full bg-white/60 flex items-center justify-center hover:bg-white transition-colors"
+                    >
+                      <Plus className="w-3 h-3 text-primary" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* TOGGLE groups */}
+          {toggleGroups.length > 0 && (
+            <div className="mt-8">
+              <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-primary/40 mb-4">
+                THEM VAO BUNG CA 🐟
+              </h3>
+              <div className="space-y-3">
+                {toggleGroups.map((group) => {
+                  const toggleOpt = group.options[0];
+                  if (!toggleOpt) return null;
+                  const enabled = selectedOptionIds.includes(toggleOpt.id);
+                  return (
+                    <button
+                      key={group.id}
+                      onClick={() => handleToggleChange(toggleOpt.id)}
+                      className={cn(
+                        "w-full flex items-center justify-between rounded-2xl border-2 px-5 py-4 text-left transition-all",
+                        enabled
+                          ? "border-primary bg-primary/5 shadow-inner"
+                          : "border-border bg-white hover:border-primary/30"
+                      )}
+                    >
+                      <div>
+                        <span className="font-bold text-sm text-primary">{group.name}</span>
+                      </div>
+                      <span className="text-sm font-bold text-primary">
+                        +{toggleOpt.price_vnd / 1000} 🐟
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -383,9 +411,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, addons, onClose }) =>
             >
               <Minus className="w-4 h-4 text-primary" />
             </button>
-            <span className="text-sm font-bold w-4 text-center text-primary">
-              {quantity}
-            </span>
+            <span className="text-sm font-bold w-4 text-center text-primary">{quantity}</span>
             <button
               onClick={() => setQuantity(quantity + 1)}
               className="w-8 h-8 rounded-full bg-white/40 flex items-center justify-center hover:bg-white/60 transition-colors"
@@ -397,9 +423,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, addons, onClose }) =>
             onClick={handleAddToCart}
             className="flex-1 bg-primary text-white py-4 rounded-2xl font-bold text-sm shadow-xl active:scale-[0.98] transition-all flex items-center justify-center gap-2"
           >
-            Thêm vào giỏ 🐟 →{" "}
+            Them vao gio 🐟 →{" "}
             <span className="text-base font-serif">🐟</span>{" "}
-            {unitPrice * quantity} cá
+            {(unitPrice * quantity) / 1000} ca
           </button>
         </div>
       </motion.div>

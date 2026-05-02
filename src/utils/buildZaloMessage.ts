@@ -1,14 +1,14 @@
 import { formatPrice } from './formatPrice';
-import type { CartItem } from '@/src/lib/types/cart';
+import type { CustomerCartItem } from '@/src/lib/types/customerCart';
 
 /**
  * buildZaloMessage constructs a pre-filled, multi-item message string for Zalo ordering.
- * It follows the branded messaging format for Bánh Cá Bốn Mùa.
- * 
- * @param items - An array of CartItem objects representing the user's shopping bag.
+ * It follows the branded messaging format for Banh Ca Bon Mua.
+ *
+ * @param items - An array of CustomerCartItem objects representing the user's shopping bag.
  * @returns A formatted string ready for URL encoding.
  */
-export const buildZaloMessage = (items: CartItem[]): string => {
+export const buildZaloMessage = (items: CustomerCartItem[]): string => {
   const lines = items.map((i) => {
     const addonStr = i.addons.length > 0 ? `\n  + ${i.addons.join(', ')}` : '';
     const qty = i.quantity > 1 ? ` x${i.quantity}` : '';
@@ -20,14 +20,14 @@ export const buildZaloMessage = (items: CartItem[]): string => {
   const total = items.reduce((sum, i) => sum + i.totalPrice * i.quantity, 0);
 
   return [
-    'Xin chào Bánh Cá Bốn Mùa! 🐟',
-    'Mình muốn đặt:',
+    'Xin chao Banh Ca Bon Mua! 🐟',
+    'Minh muon dat:',
     '',
     ...lines,
     '',
-    `Tổng: ${formatPrice(total)}`,
-    'Mình có thể thanh toán khi nhận hàng nhé!',
+    `Tong: ${formatPrice(total)}`,
+    'Minh co the thanh toan khi nhan hang nhe!',
     '---',
-    'Cảm ơn ạ!',
+    'Cam on a!',
   ].join('\n');
 };

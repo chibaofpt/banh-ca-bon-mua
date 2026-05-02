@@ -2,13 +2,13 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { CartItem } from "@/src/lib/types/cart";
+import type { CustomerCartItem } from "@/src/lib/types/customerCart";
 
 interface CartState {
-  items: CartItem[];
+  items: CustomerCartItem[];
   isCartOpen: boolean;
   setCartOpen: (open: boolean) => void;
-  addItem: (newItem: Omit<CartItem, "quantity">) => void;
+  addItem: (newItem: Omit<CustomerCartItem, "quantity">) => void;
   removeItem: (id: string, size: string) => void;
   clearCart: () => void;
 }

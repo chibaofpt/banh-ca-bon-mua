@@ -92,6 +92,19 @@ Calls `GET /api/staff/scan?token=xxx`:
 - Soft delete only (`is_available = false`) — never hard delete
 - Display all items including `is_available = false`
 
+### Daily item create/edit flow (`MenuItemForm.tsx`)
+
+When category = `daily`:
+- Form shows **3 price fields**: M / L / XL — all required
+- `price_vnd` top-level field is hidden and not sent
+- On **Create**: `POST /api/admin/menu` with `{ ..., category: "daily", sizes: [{ size: "M", price_vnd }, { size: "L", price_vnd }, { size: "XL", price_vnd }] }` — server creates 1 `menu_items` + 3 `menu_item_sizes` in a transaction
+- On **Edit**: `PUT /api/admin/menu/[id]` with `{ ..., sizes: [...] }` — server upserts each size row
+- On **Delete** (soft): `DELETE /api/admin/menu/[id]` → `is_available = false`; cascade on `menu_item_sizes` fires automatically on hard delete but soft delete only touches the parent row — all 3 sizes are effectively hidden since availability is checked on the parent
+
+When category = `seasonal` or `recipe`:
+- Form shows single `price_vnd` field — required, non-null integer
+- `sizes` field is absent from request body
+
 ---
 
 ## 7. Admin — Points Log (`/admin/points-log`)

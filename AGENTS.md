@@ -94,8 +94,13 @@
 - No cascade delete on `voucher_packages.menu_item_id` — ask architect first
 - Admin first user: created manually via Supabase dashboard — no seed, no setup route
 - Old Supabase Storage images are not auto-deleted on replace/delete — deferred
-- Price snapshot: copy `price_vnd` → `unit_price_vnd` at order creation — never join back to current menu prices
+- Price snapshot: copy `price_vnd` → `unit_price_vnd` at order creation — never join back to current menu prices; for `daily` items copy from `menu_item_sizes.price_vnd` for the selected size
 - No Redis, no OTP, no Zalo ZNS until Phase 5
 - Customer order → default `PENDING`; staff counter order → `COMPLETED` immediately
 - Ghost user: `password_hash = "GHOST_USER_NO_PASSWORD"` — register flow updates existing row instead of inserting
 - All business logic details (routes, request/response shapes, error codes) → `API.md` is single source of truth
+- Categories: exactly 3 — `daily`, `seasonal`, `recipe`. Only `daily` items have sizes; `seasonal`/`recipe` never have sizes.
+- `menu_items.price_vnd` is nullable: null for `daily` (prices in `menu_item_sizes`), non-null integer for `seasonal`/`recipe`
+- Daily item creation: 1 `menu_items` row + exactly 3 `menu_item_sizes` rows (M, L, XL), all in one `prisma.$transaction()`
+- Daily item `is_available` toggle affects the whole item — no per-size availability
+- `order_items.size` is nullable: required (M/L/XL) for `daily`, null for `seasonal`/`recipe`; server validates this at order time

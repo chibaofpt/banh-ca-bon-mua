@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from 'react';
-import { motion, AnimatePresence, Variants } from 'framer-motion';
-import { useRouter } from 'next/navigation';
-import { Search, ArrowLeft, ArrowRight, Coffee } from 'lucide-react';
-import Link from 'next/link';
+import React, { useEffect, useState } from "react";
+import { motion, Variants } from "framer-motion";
+import { ArrowRight, Coffee } from "lucide-react";
+import Link from "next/link";
 import { fetchMenu } from "@/src/services/menuService";
 import type { MenuItem } from "@/src/lib/types/menu";
 
@@ -13,7 +12,7 @@ const fadeUp: Variants = {
   visible: (i: number) => ({
     opacity: 1,
     y: 0,
-    transition: { delay: i * 0.05, duration: 0.4, ease: "easeOut" }
+    transition: { delay: i * 0.05, duration: 0.4, ease: "easeOut" },
   }),
 };
 
@@ -23,8 +22,8 @@ const FeaturedProducts: React.FC = () => {
 
   useEffect(() => {
     fetchMenu().then((data) => {
-      // Pick 4 items from daily menu to feature
-      setItems(data.daily.slice(0, 4));
+      // Pick up to 4 items from daily menu to feature
+      setItems((data["daily"] ?? []).slice(0, 4));
       setLoading(false);
     });
   }, []);
@@ -52,55 +51,66 @@ const FeaturedProducts: React.FC = () => {
             href="/menu"
             className="group flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-primary hover:text-accent transition-colors"
           >
-            Xem tất cả <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            Xem tất cả{" "}
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </Link>
         </motion.div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
-          {items.map((item, i) => (
-            <motion.div
-              key={item.id}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              variants={fadeUp}
-              custom={i}
-              className="group flex flex-col h-full bg-white rounded-4xl overflow-hidden border border-border shadow-sm hover:shadow-xl transition-all duration-500"
-            >
-              {/* Image Area */}
-              <div className="aspect-square bg-[#d9e4d4] relative overflow-hidden flex items-center justify-center p-12">
-                <Coffee className="w-full h-full text-[#b8c9b4] group-hover:scale-110 transition-transform duration-700" />
-                
-                {/* Hover Quick Add Overlay */}
-                <div className="absolute inset-0 bg-primary/20 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-                   <Link href="/menu" className="bg-white text-primary px-6 py-2.5 rounded-full font-bold text-sm shadow-xl transform translate-y-4 group-hover:translate-y-0 transition-transform duration-500">
-                      Chi tiết
-                   </Link>
-                </div>
-              </div>
+          {items.map((item, i) => {
+            const displayPrice =
+              item.category === "daily"
+                ? (item.sizes.find((s) => s.size === "L")?.price_vnd ?? 0)
+                : (item.price_vnd ?? 0);
 
-              {/* Content */}
-              <div className="p-5 flex flex-col flex-1">
-                <h3 className="font-serif font-bold text-lg md:text-xl text-foreground mb-3 truncate">
-                  {item.name}
-                </h3>
-                
-                <div className="flex flex-wrap gap-1.5 mb-4 mt-auto">
-                   {item.tags.slice(0, 2).map((tag, idx) => (
-                      <span key={idx} className="text-[10px] uppercase tracking-wider font-bold px-3 py-1 rounded-full bg-secondary/30 text-primary border border-primary/10">
-                        {tag}
-                      </span>
-                   ))}
+            return (
+              <motion.div
+                key={item.id}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true }}
+                variants={fadeUp}
+                custom={i}
+                className="group flex flex-col h-full bg-white rounded-4xl overflow-hidden border border-border shadow-sm hover:shadow-xl transition-all duration-500"
+              >
+                {/* Image Area */}
+                <div className="aspect-square bg-[#d9e4d4] relative overflow-hidden flex items-center justify-center p-12">
+                  {item.image_url ? (
+                    <img
+                      src={item.image_url}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <Coffee className="w-full h-full text-[#b8c9b4] group-hover:scale-110 transition-transform duration-700" />
+                  )}
+
+                  {/* Hover Quick Add Overlay */}
+                  <div className="absolute inset-0 bg-primary/20 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                    <Link
+                      href="/menu"
+                      className="bg-white text-primary px-6 py-2.5 rounded-full font-bold text-sm shadow-xl transform translate-y-4 group-hover:translate-y-0 transition-transform duration-500"
+                    >
+                      Chi tiet
+                    </Link>
+                  </div>
                 </div>
 
-                <div className="pt-4 border-t border-border flex items-center justify-between">
-                  <p className="text-primary font-bold text-base flex items-center gap-1.5">
-                    <span className="text-lg">🐟</span> {item.sizes?.M?.price ?? item.price ?? 0} cá
-                  </p>
+                {/* Content */}
+                <div className="p-5 flex flex-col flex-1">
+                  <h3 className="font-serif font-bold text-lg md:text-xl text-foreground mb-3 truncate">
+                    {item.name}
+                  </h3>
+
+                  <div className="pt-4 border-t border-border flex items-center justify-between mt-auto">
+                    <p className="text-primary font-bold text-base flex items-center gap-1.5">
+                      <span className="text-lg">🐟</span> {displayPrice / 1000} ca
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </div>
       </div>
     </section>

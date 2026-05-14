@@ -22,8 +22,8 @@ const FeaturedProducts: React.FC = () => {
 
   useEffect(() => {
     fetchMenu().then((data) => {
-      // Pick up to 4 items from daily menu to feature
-      setItems((data["daily"] ?? []).slice(0, 4));
+      // Pick up to 4 latte items to feature (Phase 2: categories are latte / fusion)
+      setItems(data.latte.slice(0, 4));
       setLoading(false);
     });
   }, []);
@@ -59,9 +59,9 @@ const FeaturedProducts: React.FC = () => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8">
           {items.map((item, i) => {
             const displayPrice =
-              item.category === "daily"
-                ? (item.sizes.find((s) => s.size === "L")?.price_vnd ?? 0)
-                : (item.price_vnd ?? 0);
+              item.sizes.find((s) => s.size === "L")?.base_price_vnd
+              ?? item.sizes[0]?.base_price_vnd
+              ?? 0;
 
             return (
               <motion.div

@@ -12,10 +12,11 @@ interface MenuCardProps {
 
 /** MenuCard — displays a single menu item in the customer menu grid. */
 const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
+  // Phase 2: all items use base_price_vnd from sizes. Show L as reference price.
   const displayPrice =
-    item.category === "daily"
-      ? (item.sizes.find((s) => s.size === "L")?.price_vnd ?? 0)
-      : (item.price_vnd ?? 0);
+    item.sizes.find((s) => s.size === "L")?.base_price_vnd
+    ?? item.sizes[0]?.base_price_vnd
+    ?? 0;
 
   return (
     <div

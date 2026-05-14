@@ -34,9 +34,8 @@
 
 ### Main Screen
 - **Quét QR** button at top → opens `QRScannerModal`
-- Menu displayed as cards (`StaffMenuCard`), split by category
-- Tap card → `AddonModal` to select addons → **Add to cart**
-- Item size is read from `menu_items` — not stored separately on the order
+- Menu displayed as cards (`StaffMenuCard`), split by category (`latte` / `fusion`)
+- Tap card → `AddonModal` to select size + addons → **Add to cart**
 
 ### QR Scan Within Order Flow
 Calls `GET /api/staff/scan?token=xxx`:
@@ -56,7 +55,7 @@ Calls `GET /api/staff/scan?token=xxx`:
 
 ### Staff Order Rules
 - `pickup_time`: not collected — counter orders are immediate
-- `note` on order_item: optional — staff may enter custom instructions (e.g. "ít đá", "không sữa")
+- `note` on order_item: optional — staff may enter custom instructions
 - Status = `COMPLETED` immediately on creation, points awarded at that moment
 - To cancel → admin sets `CANCELLED` manually + reverses points if needed
 
@@ -85,43 +84,118 @@ Calls `GET /api/staff/scan?token=xxx`:
 
 ## 6. Admin — Menu Management (`/admin/menu`)
 
-- List + CRUD `menu_items`: `GET/POST /api/admin/menu`, `PUT/DELETE /api/admin/menu/[id]`
-- List + manage addon groups + options: `GET/POST/PUT/DELETE /api/admin/addon-groups`
-- Attach / detach addon group from menu item: `POST/DELETE /api/admin/menu-item-addons`
-- Upload images to Supabase Storage (bucket: `menu-images`, max 5MB)
+### Overview
+- Routes used: `GET/POST /api/admin/menu`, `PUT/DELETE /api/admin/menu/[id]`
+- Displays all items including `is_available = false`
 - Soft delete only (`is_available = false`) — never hard delete
-- Display all items including `is_available = false`
+- Items split by category: `latte` | `fusion`
+- `is_seasonal` is a **boolean toggle** on any item — not a category
 
-### Addon system
+### Category Rules
 
-Addons are **auto-populated per category** when a menu item is created — admin does not need to manually attach addons after creation.
+| Category | Fixed powder | Default powder | Allowed powder swap | Milk types | Sizes |
+|---|---|---|---|---|---|
+| `latte` | ✅ `matcha_powder_id` | ❌ | ❌ | ✅ (all active) | M / L / XL |
+| `fusion` | ❌ | ✅ `default_powder_id` | ✅ via `fusion_allowed_powder` | ❌ | M / L / XL |
 
-| Category | Loại sữa | Đá Nước Dừa | Kem Matcha | Thêm bột matcha |
-|---|---|---|---|---|
-| `daily` | ✅ | ✅ | ✅ | ✅ |
-| `recipe` | ❌ | ✅ | ✅ | ✅ |
-| `seasonal` | ✅ | ✅ | ✅ | ❌ |
+### Menu Item Create/Edit — `MenuItemForm.tsx`
 
-Admin can override per-item via a toggle list in `MenuItemForm.tsx` — shows all available addon groups with on/off toggle. Admin can add or remove any addon including category defaults. No distinction shown between "default" and "manually added".
+**All items always have exactly 3 size fields (M / L / XL).** `base_price_vnd` is nullable — leave null if that size is not sold (hidden from customer UI).
 
-Category defaults are defined in `lib/menuDefaults.ts` using addon group UUIDs.
+#### Latte item fields
+- `name`, `description` (optional), `is_seasonal` toggle, `sort_order`
+- `matcha_powder_id` — required, select from active powders (`GET /api/admin/matcha-powders`)
+- `image` — file upload, max 5MB, jpeg/png/webp
+- `sizes[M/L/XL].base_price_vnd` — nullable integer (leave blank = size not sold)
+- `custom_powder_grams` — optional override per size (M/L/XL); if blank, COALESCE falls back to `powder_size_config` then `default_size_config`
 
-### Daily item create/edit flow (`MenuItemForm.tsx`)
+#### Fusion item fields
+- `name`, `description` (optional), `is_seasonal` toggle, `sort_order`
+- `base_liquid_note` — optional display text (e.g. "Base: Nước lọc, Milk foam")
+- `default_powder_id` — optional; if null, server resolves fallback (Meyumi → Hana → MH-3 → cheapest available)
+- `image` — file upload, max 5MB, jpeg/png/webp
+- `sizes[M/L/XL].base_price_vnd` — nullable integer
+- `custom_powder_grams` — optional override per size
+- **Allowed powder list**: after item is created, admin attaches/detaches powders via `POST/DELETE /api/admin/fusion-powders`. Empty list = swap UI hidden for customers (locked to default powder).
 
-When category = `daily`:
-- Form shows **3 price fields**: M / L / XL — all required
-- `price_vnd` top-level field is hidden and not sent
-- On **Create**: `POST /api/admin/menu` with `{ ..., category: "daily", sizes: [{ size: "M", price_vnd }, { size: "L", price_vnd }, { size: "XL", price_vnd }] }` — server creates 1 `menu_items` + 3 `menu_item_sizes` in a transaction
-- On **Edit**: `PUT /api/admin/menu/[id]` with `{ ..., sizes: [...] }` — server upserts each size row
-- On **Delete** (soft): `DELETE /api/admin/menu/[id]` → `is_available = false`; cascade on `menu_item_sizes` fires automatically on hard delete but soft delete only touches the parent row — all 3 sizes are effectively hidden since availability is checked on the parent
+#### API calls
+| Action | Endpoint | Notes |
+|---|---|---|
+| Create | `POST /api/admin/menu` | `multipart/form-data`. Server creates 1 `menu_items` + 3 `menu_item_sizes` in one `prisma.$transaction()` |
+| Update | `PUT /api/admin/menu/[id]` | `multipart/form-data`, all fields optional. Sizes upserted on `(menu_item_id, size)` |
+| Soft delete | `DELETE /api/admin/menu/[id]` | Sets `is_available = false`. For Latte items: server warns if any `matcha_powder.reference_latte_item_id` points to it |
+| Attach powder (Fusion) | `POST /api/admin/fusion-powders` | `{ menu_item_id, powder_id }` |
+| Detach powder (Fusion) | `DELETE /api/admin/fusion-powders` | `{ menu_item_id, powder_id }` |
 
-When category = `seasonal` or `recipe`:
-- Form shows single `price_vnd` field — required, non-null integer
-- `sizes` field is absent from request body
+### Addon Groups — managed within `/admin/menu`
+
+**Addons are global** — all active addon groups automatically apply to every menu item. There is no per-item configuration and no junction table.
+
+- List + CRUD addon groups and their options: `GET/POST /api/admin/addon-groups`, `PUT/DELETE /api/admin/addon-groups/[id]`
+- Soft delete only — `DELETE` sets `is_active = false`, never hard deletes
+- Deactivating a group hides it from **all** items globally
+
+| Active seed groups | Type | `is_required` |
+|---|---|---|
+| Kem | SELECTOR | true |
+| Đá dừa | TOGGLE | true |
+| Extra Matcha | SELECTOR | true |
+
+> Extra matcha options store gram amount in `addon_options.gram_value`. Server computes price at order time: `unit_price_vnd = gram_value × selected_powder.price_per_gram`. `addon_options.price_vnd` is always 0 for extra matcha.
 
 ---
 
-## 7. Admin — Points Log (`/admin/points-log`)
+## 7. Admin — Matcha Powder Management
+
+> Managed within `/admin/menu` or as a sub-section. Uses `PowderForm.tsx`.
+
+### Routes
+| Action | Endpoint |
+|---|---|
+| List all powders | `GET /api/admin/matcha-powders` |
+| Create powder | `POST /api/admin/matcha-powders` |
+| Update powder | `PUT /api/admin/matcha-powders/[id]` |
+| Soft delete | `DELETE /api/admin/matcha-powders/[id]` → `is_available = false` |
+
+### Powder fields (form)
+- `name`, `manufacturer` (optional), `description` (optional)
+- `price_per_gram` — integer VND/g (e.g. 6000 = 6,000 VND/g)
+- `type` — `RECOMMEND` | `NEW` | `SEASONAL` | `NONE`
+- `reference_latte_item_id` — optional; links to a Latte item for `Premium_Latte` pricing anchor
+- Flavour profile (display only, all optional, int 1–5): `fragrance`, `body`, `bitterness`, `umami`, `color`
+- `is_available` toggle
+
+### Per-powder size config — `powder_size_config`
+- Optional gram override per size (M/L/XL) for this specific powder
+- If blank → COALESCE falls back to `default_size_config[size].powder_gram`
+- Edit inline in `PowderForm.tsx`
+
+### Milk Types
+| Action | Endpoint |
+|---|---|
+| List all | `GET /api/admin/milk-types` |
+| Create | `POST /api/admin/milk-types` |
+| Update | `PUT /api/admin/milk-types/[id]` |
+| Deactivate | `DELETE /api/admin/milk-types/[id]` → `is_active = false` |
+
+- Fields: `name`, `price_per_ml` (int VND/ml), `is_default`, `is_active`, `display_order`
+- `is_default = true` (sữa bò): always used as base for price computation, hidden in UI selector
+- Adding a new active milk type → automatically available for all Latte items
+
+### Default Size Config
+| Action | Endpoint |
+|---|---|
+| Read | `GET /api/admin/default-size-config` |
+| Update | `PUT /api/admin/default-size-config` |
+
+- Always exactly 3 rows: M / L / XL
+- Fields per size: `milk_ml` (int), `powder_gram` (Decimal)
+- Changes apply **globally and immediately** to all computed prices — warn admin before saving
+- Managed via `SizeConfigForm.tsx`
+
+---
+
+## 8. Admin — Points Log (`/admin/points-log`)
 
 - View full manual adjustment history: `GET /api/admin/points-log`
 - **Manually add points** to customer: max 100/action → `POST /api/admin/points/add`
@@ -129,7 +203,7 @@ When category = `seasonal` or `recipe`:
 
 ---
 
-## 8. Admin — Voucher Packages (`/admin/voucher-packages`)
+## 9. Admin — Voucher Packages (`/admin/voucher-packages`)
 
 - Separate page from points log
 - List + manage voucher packages: `GET/POST /api/admin/voucher-packages`, `PUT/DELETE /api/admin/voucher-packages/[id]`
@@ -137,7 +211,7 @@ When category = `seasonal` or `recipe`:
 
 ---
 
-## 9. Ghost User Convention
+## 10. Ghost User Convention
 
 When a customer has no account, create a new user:
 
@@ -157,7 +231,7 @@ When a customer has no account, create a new user:
 
 ---
 
-## 10. Out of Scope for Current Phase
+## 11. Out of Scope for Current Phase
 
 - Dashboard overview (revenue, pending orders)
 - Staff account management

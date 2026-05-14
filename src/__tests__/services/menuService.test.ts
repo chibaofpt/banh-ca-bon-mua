@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock apiClient trước khi import service
+// Mock apiClient before importing service
 vi.mock("@/src/lib/api/client", () => ({
   apiClient: {
     get: vi.fn(),
@@ -8,96 +8,131 @@ vi.mock("@/src/lib/api/client", () => ({
 }));
 
 import { apiClient } from "@/src/lib/api/client";
-import { fetchMenuItems } from "@/src/services/menuService";
-import type { MenuItem } from "@/src/lib/types/menu";
+import { fetchMenu, fetchMenuItems } from "@/src/services/menuService";
+import type { MenuItem, MenuData } from "@/src/lib/types/menu";
 
-const mockDailyItem: MenuItem = {
+const mockLatteItem: MenuItem = {
   id: "item-1",
   name: "Matcha Latte",
   description: null,
-  category: "daily",
-  price_vnd: null,
+  category: "latte",
+  is_seasonal: false,
   image_url: null,
   sort_order: 0,
+  base_liquid_note: null,
+  custom_powder_grams: null,
+  powder: { id: "powder-1", name: "Meyumi", type: "RECOMMEND" },
+  resolved_default_powder_id: null,
+  allowed_powder_ids: [],
+  milk_types: [],
   sizes: [
-    { size: "M", price_vnd: 45000 },
-    { size: "L", price_vnd: 55000 },
-    { size: "XL", price_vnd: 65000 },
+    { size: "M", base_price_vnd: 45000, milk_ml: 180 },
+    { size: "L", base_price_vnd: 55000, milk_ml: 220 },
+    { size: "XL", base_price_vnd: 65000, milk_ml: 260 },
   ],
   addon_groups: [],
 };
 
-const mockSeasonalItem: MenuItem = {
+const mockFusionItem: MenuItem = {
   id: "item-2",
-  name: "Hồng Trà Đặc Biệt",
-  description: "Theo mùa",
-  category: "seasonal",
-  price_vnd: 60000,
+  name: "Matcha Cam",
+  description: "Fusion vị cam",
+  category: "fusion",
+  is_seasonal: false,
   image_url: null,
   sort_order: 1,
-  sizes: [],
+  base_liquid_note: "Nước ép cam",
+  custom_powder_grams: null,
+  powder: null,
+  resolved_default_powder_id: "powder-1",
+  allowed_powder_ids: ["powder-1", "powder-2"],
+  milk_types: [],
+  sizes: [
+    { size: "M", base_price_vnd: 50000, milk_ml: 0 },
+    { size: "L", base_price_vnd: 60000, milk_ml: 0 },
+    { size: "XL", base_price_vnd: 70000, milk_ml: 0 },
+  ],
   addon_groups: [],
 };
+
+const mockMenuData: MenuData = {
+  updated_at: "2026-01-01T00:00:00.000Z",
+  latte: [mockLatteItem],
+  fusion: [mockFusionItem],
+};
+
+describe("fetchMenu", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("returns full MenuData with latte and fusion arrays", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: { data: mockMenuData },
+    });
+
+    const result = await fetchMenu();
+
+    expect(result.latte).toHaveLength(1);
+    expect(result.fusion).toHaveLength(1);
+    expect(result.updated_at).toBe("2026-01-01T00:00:00.000Z");
+  });
+
+  it("calls correct endpoint GET /api/menu", async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({
+      data: { data: mockMenuData },
+    });
+
+    await fetchMenu();
+
+    expect(apiClient.get).toHaveBeenCalledWith("/api/menu");
+  });
+});
 
 describe("fetchMenuItems", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("flattens category-grouped response thành MenuItem[]", async () => {
+  it("flattens latte + fusion into a single MenuItem[]", async () => {
     vi.mocked(apiClient.get).mockResolvedValueOnce({
-      data: {
-        data: {
-          daily: [mockDailyItem],
-          seasonal: [mockSeasonalItem],
-        },
-      },
+      data: { data: mockMenuData },
     });
 
     const result = await fetchMenuItems();
 
     expect(result).toHaveLength(2);
-    expect(result[0].category).toBe("daily");
-    expect(result[1].category).toBe("seasonal");
+    expect(result[0].category).toBe("latte");
+    expect(result[1].category).toBe("fusion");
   });
 
-  it("daily item phải có sizes array với 3 entries", async () => {
+  it("latte item has 3 sizes with base_price_vnd and milk_ml", async () => {
     vi.mocked(apiClient.get).mockResolvedValueOnce({
-      data: { data: { daily: [mockDailyItem] } },
+      data: { data: { ...mockMenuData, fusion: [] } },
     });
 
     const result = await fetchMenuItems();
-    const daily = result.find((i) => i.category === "daily");
+    const latte = result.find((i) => i.category === "latte");
 
-    expect(daily).toBeDefined();
-    expect(daily!.price_vnd).toBeNull();
-    expect(daily!.sizes).toHaveLength(3);
-    expect(daily!.sizes.map((s) => s.size)).toEqual(["M", "L", "XL"]);
+    expect(latte).toBeDefined();
+    expect(latte!.sizes).toHaveLength(3);
+    expect(latte!.sizes.map((s) => s.size)).toEqual(["M", "L", "XL"]);
+    expect(latte!.sizes[1].base_price_vnd).toBe(55000);
+    expect(latte!.sizes[1].milk_ml).toBe(220);
   });
 
-  it("seasonal item phải có price_vnd non-null và sizes rỗng", async () => {
+  it("fusion item has resolved_default_powder_id and allowed_powder_ids", async () => {
     vi.mocked(apiClient.get).mockResolvedValueOnce({
-      data: { data: { seasonal: [mockSeasonalItem] } },
+      data: { data: { ...mockMenuData, latte: [] } },
     });
 
     const result = await fetchMenuItems();
-    const seasonal = result[0];
+    const fusion = result.find((i) => i.category === "fusion");
 
-    expect(seasonal.price_vnd).toBe(60000);
-    expect(seasonal.sizes).toHaveLength(0);
+    expect(fusion).toBeDefined();
+    expect(fusion!.resolved_default_powder_id).toBe("powder-1");
+    expect(fusion!.allowed_powder_ids).toEqual(["powder-1", "powder-2"]);
   });
 
-  it("throw error nếu API fail", async () => {
+  it("throws error if API fails", async () => {
     vi.mocked(apiClient.get).mockRejectedValueOnce(new Error("Network error"));
 
     await expect(fetchMenuItems()).rejects.toThrow();
-  });
-
-  it("gọi đúng endpoint GET /api/menu", async () => {
-    vi.mocked(apiClient.get).mockResolvedValueOnce({
-      data: { data: {} },
-    });
-
-    await fetchMenuItems();
-
-    expect(apiClient.get).toHaveBeenCalledWith("/api/menu");
   });
 });

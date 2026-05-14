@@ -78,11 +78,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, onClose }) => {
   // ── Base price ─────────────────────────────────────────────────────────
 
   const basePrice = useMemo(() => {
-    if (item.category === "daily") {
-      return item.sizes.find((s) => s.size === selectedSize)?.price_vnd ?? 0;
-    }
-    return item.price_vnd ?? 0;
-  }, [item, selectedSize]);
+    // Phase 2: all items use base_price_vnd from sizes.
+    return item.sizes.find((s) => s.size === selectedSize)?.base_price_vnd ?? 0;
+  }, [item.sizes, selectedSize]);
 
   // ── Addons price ───────────────────────────────────────────────────────
 
@@ -124,12 +122,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, onClose }) => {
   };
 
   const handleAddToCart = () => {
-    const sizeLabel =
-      item.category === "daily" ? SIZE_LABELS[selectedSize] ?? "Mot size" : "Mot size";
-    const sizeML =
-      item.category === "daily"
-        ? item.sizes.find((s) => s.size === selectedSize)?.price_vnd ?? 0
-        : 0;
+    const sizeLabel = SIZE_LABELS[selectedSize] ?? "Mot size";
+    const sizeML = item.sizes.find((s) => s.size === selectedSize)?.base_price_vnd ?? 0;
 
     addItem({
       id: item.id,
@@ -185,8 +179,8 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, onClose }) => {
             <p className="text-sm text-primary/60 mt-2 leading-relaxed">{item.description}</p>
           </div>
 
-          {/* Size Selector — daily items only */}
-          {item.category === "daily" && item.sizes.length > 0 && (
+          {/* Size Selector — all Phase 2 items have sizes */}
+          {item.sizes.length > 0 && (
             <div className="mt-8">
               <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-primary/40 mb-4">
                 CHON SIZE
@@ -207,23 +201,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, onClose }) => {
                       {SIZE_LABELS[s.size]}
                     </span>
                     <p className="text-[11px] font-bold text-primary mt-1 flex items-center gap-1">
-                      <span className="text-sm">🐟</span> {s.price_vnd / 1000} ca
+                      <span className="text-sm">🐟</span> {s.base_price_vnd / 1000} ca
                     </p>
                   </button>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Flat price — seasonal/recipe */}
-          {item.category !== "daily" && item.price_vnd !== null && (
-            <div className="mt-8 flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-[0.2em] text-primary/40">
-                GIA
-              </span>
-              <span className="text-base font-bold text-primary">
-                🐟 {(item.price_vnd ?? 0) / 1000} ca
-              </span>
             </div>
           )}
 

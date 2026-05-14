@@ -150,9 +150,9 @@ export default function AdminMenuPage() {
                   <p className="text-[11px] text-muted-foreground">{item.category}</p>
                 </div>
                 <div className="text-primary font-semibold text-sm whitespace-nowrap">
-                  {item.price_vnd !== null
-                    ? `🐟 ${item.price_vnd / 1000} cá`
-                    : "Xem giá theo size"}
+                  {item.sizes.some((s) => s.base_price_vnd !== null)
+                    ? `🐟 ${Math.min(...item.sizes.filter((s) => s.base_price_vnd !== null).map((s) => s.base_price_vnd as number)) / 1000}+ cá`
+                    : "Chưa có giá"}
                 </div>
               </div>
               {item.description && (

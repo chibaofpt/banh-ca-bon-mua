@@ -15,6 +15,19 @@ import {
   type Size,
 } from "@/src/utils/pricing";
 
+/**
+ * Minimal interface satisfied by both PrismaClient and the transaction client
+ * (Omit<PrismaClient, '$connect' | ...>) that Prisma passes inside $transaction.
+ * Only includes the model accessors used by pricing functions.
+ */
+type PrismaTransactionClient = {
+  defaultSizeConfig: typeof prisma.defaultSizeConfig;
+  powderSizeConfig: typeof prisma.powderSizeConfig;
+  matchaPowder: typeof prisma.matchaPowder;
+  milkType: typeof prisma.milkType;
+  menuItemSize: typeof prisma.menuItemSize;
+};
+
 // ── Context ───────────────────────────────────────────────────────────────────
 
 export interface PricingContext {
@@ -33,13 +46,13 @@ export interface PricingContext {
  * Builds a pricing context by preloading all required DB data in a single pass.
  * Call once before looping over order items — avoids N+1 queries.
  */
-export async function buildPricingContext(): Promise<PricingContext> {
+export async function buildPricingContext(client: PrismaTransactionClient = prisma): Promise<PricingContext> {
   const [defaultSizeConfigs, allPowderConfigs, allPowders, allMilkTypes] =
     await Promise.all([
-      prisma.defaultSizeConfig.findMany(),
-      prisma.powderSizeConfig.findMany(),
-      prisma.matchaPowder.findMany({ where: { is_available: true } }),
-      prisma.milkType.findMany({ where: { is_active: true } }),
+      client.defaultSizeConfig.findMany(),
+      client.powderSizeConfig.findMany(),
+      client.matchaPowder.findMany({ where: { is_available: true } }),
+      client.milkType.findMany({ where: { is_active: true } }),
     ]);
 
   const powderSizeConfigMap: Record<string, PowderSizeConfigEntry[]> = {};
@@ -140,14 +153,15 @@ export function resolveOrderItemPrice(
 export async function resolveOrderItemPremiumLatte(
   selectedPowderId: string,
   defaultPowderId: string,
-  size: Size
+  size: Size,
+  client: PrismaTransactionClient = prisma
 ): Promise<number> {
   const [selectedPowder, defaultPowder] = await Promise.all([
-    prisma.matchaPowder.findUnique({
+    client.matchaPowder.findUnique({
       where: { id: selectedPowderId },
       select: { reference_latte_item_id: true },
     }),
-    prisma.matchaPowder.findUnique({
+    client.matchaPowder.findUnique({
       where: { id: defaultPowderId },
       select: { reference_latte_item_id: true },
     }),
@@ -158,13 +172,13 @@ export async function resolveOrderItemPremiumLatte(
   }
 
   const [selectedSize, defaultSize] = await Promise.all([
-    prisma.menuItemSize.findFirst({
+    client.menuItemSize.findFirst({
       where: {
         menu_item_id: selectedPowder.reference_latte_item_id,
         size,
       },
     }),
-    prisma.menuItemSize.findFirst({
+    client.menuItemSize.findFirst({
       where: {
         menu_item_id: defaultPowder.reference_latte_item_id,
         size,

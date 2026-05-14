@@ -20,5 +20,5 @@ export async function fetchMenu(): Promise<MenuData> {
  */
 export async function fetchMenuItems(): Promise<MenuItem[]> {
   const data = await fetchMenu();
-  return Object.values(data).flat();
+  return [...data.latte, ...data.fusion];
 }

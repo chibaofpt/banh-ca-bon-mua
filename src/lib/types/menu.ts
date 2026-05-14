@@ -107,3 +107,27 @@ export interface MenuData {
   latte: MenuItem[];
   fusion: MenuItem[];
 }
+
+/** Admin-facing shape returned by GET /api/admin/menu. Includes unavailable items and all sizes (even null base_price_vnd). */
+export interface AdminMenuItem {
+  id: string;
+  name: string;
+  description: string | null;
+  category: Category;
+  is_seasonal: boolean;
+  image_url: string | null;
+  is_available: boolean;
+  sort_order: number;
+  base_liquid_note: string | null;
+  custom_powder_grams: { M?: number; L?: number; XL?: number } | null;
+  updated_at: string;
+  /** Latte only */
+  matcha_powder_id: string | null;
+  powder: MenuItemPowder | null;
+  /** Fusion only */
+  default_powder_id: string | null;
+  default_powder: MenuItemPowder | null;
+  allowed_powder_ids: string[];
+  /** All 3 size rows — base_price_vnd may be null (size not sold). */
+  sizes: { size: Size; base_price_vnd: number | null; milk_ml: number }[];
+}

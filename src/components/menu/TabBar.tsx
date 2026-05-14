@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-export type TabId = 'daily' | 'seasonal' | 'recipe';
+export type TabId = 'latte' | 'fusion';
 
 interface Tab {
   id: TabId;
@@ -15,9 +15,8 @@ interface TabBarProps {
 }
 
 const tabs: Tab[] = [
-  { id: 'daily', label: 'Daily' },
-  { id: 'seasonal', label: 'Theo Mùa' },
-  { id: 'recipe', label: 'Công Thức' },
+  { id: 'latte', label: 'Latte' },
+  { id: 'fusion', label: 'Fusion' },
 ];
 
 const TabBar: React.FC<TabBarProps> = ({ activeTab, setActiveTab }) => {

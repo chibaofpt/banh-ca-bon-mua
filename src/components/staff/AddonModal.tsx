@@ -4,7 +4,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "@/src/utils/cn";
-import type { MenuItem, SweetnessLevel, AddonGroup } from "@/src/lib/types/menu";
+import type { MenuItem, Size, SweetnessLevel, AddonGroup } from "@/src/lib/types/menu";
 import type { CartItem } from "@/src/lib/types/cart";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -51,9 +51,11 @@ function initQuantityMap(item: MenuItem): Record<string, number> {
 /** Modal for customising a menu item before adding to the staff counter cart. */
 export function AddonModal({ item, freeVoucherId, onClose, onConfirm }: AddonModalProps) {
   // Use optional chaining and default values to prevent crashes when item is null
-  const [selectedSize, setSelectedSize] = useState<"M" | "L" | "XL" | null>(
-    item?.category === "daily" ? "L" : null
-  );
+  // Phase 2: all items have sizes — default to first available size (L if present, else first).
+  const [selectedSize, setSelectedSize] = useState<Size>(() => {
+    const available = item?.sizes ?? [];
+    return (available.find((s) => s.size === "L") ?? available[0])?.size ?? "M";
+  });
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(() =>
     item ? initSelectedOptionIds(item) : []
   );
@@ -69,10 +71,8 @@ export function AddonModal({ item, freeVoucherId, onClose, onConfirm }: AddonMod
     if (!item) return 0;
     if (freeVoucherId) return 0;
 
-    const base =
-      item.category === "daily"
-        ? (item.sizes.find((s) => s.size === selectedSize)?.price_vnd ?? 0)
-        : (item.price_vnd ?? 0);
+    // Phase 2: all items use base_price_vnd from sizes. Client price is estimate — server recomputes.
+    const base = item.sizes.find((s) => s.size === selectedSize)?.base_price_vnd ?? 0;
 
     const addonsCost = item.addon_groups
       .flatMap((g) => {
@@ -111,7 +111,8 @@ export function AddonModal({ item, freeVoucherId, onClose, onConfirm }: AddonMod
 
   const isConfirmDisabled = (): boolean => {
     if (!item) return true;
-    if (item.category === "daily" && selectedSize === null) return true;
+    // All items require a size in Phase 2
+    if (!selectedSize) return true;
     for (const g of item.addon_groups) {
       if (
         g.type === "SELECTOR" &&
@@ -129,10 +130,7 @@ export function AddonModal({ item, freeVoucherId, onClose, onConfirm }: AddonMod
   const handleConfirm = () => {
     if (!item) return;
     const unitPrice = calcUnitPrice();
-    const basePrice =
-      item.category === "daily"
-        ? (item.sizes.find((s) => s.size === selectedSize)?.price_vnd ?? 0)
-        : (item.price_vnd ?? 0);
+    const basePrice = item.sizes.find((s) => s.size === selectedSize)?.base_price_vnd ?? 0;
     const addonsPrice = freeVoucherId ? 0 : unitPrice - basePrice;
 
     const quantityAddonOptions = item.addon_groups
@@ -150,15 +148,18 @@ export function AddonModal({ item, freeVoucherId, onClose, onConfirm }: AddonMod
       name: item.name,
       category: item.category,
       imageUrl: item.image_url,
-      size: selectedSize,
+      size: selectedSize,   // always a Size in Phase 2
       unitPrice,
       quantity: 1,
       sweetness,
+      iceOption: "NORMAL",
+      coldwhisk: false,
       note,
       selectedOptionIds,
       quantityMap,
       addonsPrice,
       quantityAddonOptions,
+      clientPriceVnd: unitPrice,
       ...(freeVoucherId ? { productVoucherId: freeVoucherId } : {}),
     };
 
@@ -214,8 +215,8 @@ export function AddonModal({ item, freeVoucherId, onClose, onConfirm }: AddonMod
                 </button>
               </div>
 
-              {/* Size picker — daily only */}
-              {item.category === "daily" && (
+              {/* Size picker — all Phase 2 items have sizes */}
+              {item.sizes.length > 0 && (
                 <div className="mb-5">
                   <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
                     Chọn Size *
@@ -236,7 +237,7 @@ export function AddonModal({ item, freeVoucherId, onClose, onConfirm }: AddonMod
                           {s.size}
                         </span>
                         <span className="block text-xs font-semibold text-primary mt-1">
-                          🐟 {s.price_vnd / 1000} cá
+                          🐟 {s.base_price_vnd / 1000} cá
                         </span>
                       </button>
                     ))}

@@ -29,7 +29,7 @@ export default function MenuPage() {
   const router = useRouter();
   const [data, setData] = useState<MenuData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabId>('daily');
+  const [activeTab, setActiveTab] = useState<TabId>('latte');
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
 

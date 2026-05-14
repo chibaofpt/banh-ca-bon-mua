@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { prisma } from "@/lib/prisma";
 import { getSession, normalizePhone } from "@/lib/auth";
 import { staffOrderSchema } from "@/lib/validations/order";
+import { buildPricingContext, resolveOrderItemPrice, resolveOrderItemPremiumLatte } from "@/lib/pricing";
 import type { Size, SweetnessLevel } from "@/src/lib/types/menu";
 
 /** POST /api/staff/orders — create a counter order (status = COMPLETED immediately) */
@@ -49,6 +50,9 @@ export async function POST(req: NextRequest) {
     const data = parsed.data;
 
     const order = await prisma.$transaction(async (tx) => {
+      // 0. Pre-load pricing context for entire order
+      const pricingCtx = await buildPricingContext(tx);
+
       // ── Step 1: Normalize phone + resolve/create user ────────────────────────
       const normalizedPhone = normalizePhone(data.phone_number);
 
@@ -72,6 +76,8 @@ export async function POST(req: NextRequest) {
       }
 
       // ── Step 2: Validate items + re-fetch prices from DB ─────────────────────
+      const priceConflicts: any[] = [];
+
       const resolvedItems = await Promise.all(
         data.items.map(async (item) => {
           const menuItem = await tx.menuItem.findUnique({
@@ -83,25 +89,55 @@ export async function POST(req: NextRequest) {
             throw new Error(`ITEM_NOT_FOUND:${item.menu_item_id}`);
           }
 
-          // Resolve unit_price_vnd — NEVER trust client
-          let unit_price_vnd: number;
-
-          if (menuItem.category === "daily") {
-            if (!item.size) throw new Error(`SIZE_REQUIRED:${item.menu_item_id}`);
-            const sizeRow = menuItem.sizes.find((s) => s.size === item.size);
-            if (!sizeRow) throw new Error(`SIZE_NOT_FOUND:${item.menu_item_id}`);
-            unit_price_vnd = sizeRow.price_vnd;
-          } else {
-            // seasonal / recipe — size must be absent
-            if (item.size) throw new Error(`SIZE_NOT_ALLOWED:${item.menu_item_id}`);
-            if (menuItem.price_vnd === null) throw new Error(`PRICE_NULL:${item.menu_item_id}`);
-            unit_price_vnd = menuItem.price_vnd;
+          const sizeRow = menuItem.sizes.find((s) => s.size === item.size);
+          if (!sizeRow || sizeRow.base_price_vnd === null) {
+            throw new Error(`SIZE_NOT_AVAILABLE:${item.menu_item_id}`);
           }
 
+          // Resolve powder_id and premium_latte
+          let powder_id: string;
+          let premium_latte = 0;
+
+          if (menuItem.category === "latte") {
+            if (!menuItem.matcha_powder_id) throw new Error(`POWDER_MISSING_FOR_LATTE:${item.menu_item_id}`);
+            powder_id = menuItem.matcha_powder_id;
+          } else {
+            // Fusion
+            powder_id = item.selected_powder_id || menuItem.default_powder_id || "";
+            if (powder_id && menuItem.default_powder_id) {
+              premium_latte = await resolveOrderItemPremiumLatte(
+                powder_id,
+                menuItem.default_powder_id,
+                item.size,
+                tx
+              );
+            }
+          }
+
+          // Compute server-authoritative unit price
+          const unit_price_vnd = resolveOrderItemPrice(
+            {
+              category: menuItem.category as "latte" | "fusion",
+              size: item.size,
+              base_price_vnd: sizeRow.base_price_vnd,
+              custom_powder_grams: menuItem.custom_powder_grams as any,
+              powder_id,
+              milk_type_id: item.selected_milk_type_id,
+              premium_latte,
+            },
+            pricingCtx
+          );
+
           // PRODUCT voucher → unit_price_vnd = 0 (addons still charged)
-          if (item.product_voucher_id) {
-            unit_price_vnd = 0;
-            // Phase 4: validate voucher status, mark REDEEMED in same tx
+          const final_unit_price_vnd = item.product_voucher_id ? 0 : unit_price_vnd;
+
+          // PRICE_CHANGED validation
+          if (item.client_price_vnd !== final_unit_price_vnd) {
+            priceConflicts.push({
+              menu_item_id: item.menu_item_id,
+              expected: final_unit_price_vnd,
+              received: item.client_price_vnd,
+            });
           }
 
           // Re-fetch addon prices — snapshot at order time
@@ -126,22 +162,29 @@ export async function POST(req: NextRequest) {
             });
           }
 
-          const line_total = (unit_price_vnd + addons_price_vnd) * item.quantity;
+          const line_total = (final_unit_price_vnd + addons_price_vnd) * item.quantity;
 
           return {
             menu_item_id: item.menu_item_id,
             quantity: item.quantity,
-            size: (item.size ?? null) as Size | null,
-            unit_price_vnd,
+            size: item.size,
+            unit_price_vnd: final_unit_price_vnd,
             addons_price_vnd,
             line_total,
             sweetness: item.sweetness as SweetnessLevel,
             note: item.note ?? null,
             product_voucher_id: item.product_voucher_id ?? null,
             resolvedAddons,
+            selected_powder_id: powder_id,
+            selected_milk_type_id: item.selected_milk_type_id ?? null,
           };
         })
       );
+
+      // Rejection on price mismatch
+      if (priceConflicts.length > 0) {
+        throw new Error(`PRICE_CHANGED:${JSON.stringify(priceConflicts)}`);
+      }
 
       const subtotal_vnd = resolvedItems.reduce((sum, item) => sum + item.line_total, 0);
       let discount_vnd = 0;
@@ -187,6 +230,8 @@ export async function POST(req: NextRequest) {
               sweetness: item.sweetness,
               note: item.note,
               product_voucher_id: item.product_voucher_id,
+              selected_powder_id: item.selected_powder_id,
+              selected_milk_type_id: item.selected_milk_type_id,
               addons: {
                 create: item.resolvedAddons.map((a) => ({
                   addon_option_id: a.addon_option_id,
@@ -249,10 +294,17 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
-    if (msg.startsWith("SIZE_REQUIRED") || msg.startsWith("SIZE_NOT_ALLOWED")) {
+    if (msg.startsWith("SIZE_REQUIRED") || msg.startsWith("SIZE_NOT_ALLOWED") || msg.startsWith("SIZE_NOT_AVAILABLE")) {
       return NextResponse.json(
         { error: "Size validation failed", code: "VALIDATION_ERROR" },
         { status: 400 }
+      );
+    }
+    if (msg.startsWith("PRICE_CHANGED")) {
+      const conflicts = JSON.parse(msg.split(":")[1] || "[]");
+      return NextResponse.json(
+        { error: "Price has changed", code: "PRICE_CHANGED", details: { conflicts } },
+        { status: 409 }
       );
     }
     if (msg.startsWith("ADDON_NOT_FOUND")) {

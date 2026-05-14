@@ -53,10 +53,26 @@ export const createMenuSchema = z.discriminatedUnion("category", [
   createFusionMenuSchema,
 ]);
 
-export const updateMenuSchema = createMenuSchema
-  .unwrap()
-  .partial()
-  .and(z.object({ category: z.enum(["latte", "fusion"]) }));
+/**
+ * Update schema — all fields optional. category still required to discriminate.
+ * Build as a separate object rather than unwrapping the discriminated union.
+ */
+export const updateMenuSchema = z.object({
+  category: z.enum(["latte", "fusion"]),
+  name: z.string().min(1).optional(),
+  description: z.string().optional().nullable(),
+  is_available: z.boolean().optional(),
+  is_seasonal: z.boolean().optional(),
+  image_url: z.string().url().optional().nullable(),
+  sort_order: z.number().int().min(0).optional(),
+  sizes: sizesSchema.optional(),
+  custom_powder_grams: customPowderGramsSchema,
+  // Latte
+  matcha_powder_id: z.string().uuid().optional().nullable(),
+  // Fusion
+  default_powder_id: z.string().uuid().optional().nullable(),
+  base_liquid_note: z.string().max(200).optional().nullable(),
+});
 
 export type CreateMenuInput = z.infer<typeof createMenuSchema>;
 export type UpdateMenuInput = z.infer<typeof updateMenuSchema>;

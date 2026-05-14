@@ -224,10 +224,10 @@ export default function StaffOrdersPage() {
         {status === "success" && (
           <div className="grid grid-cols-2 gap-3">
             {visibleItems.map((item) => {
-              const displayPrice =
-                item.category === "daily"
-                  ? (item.sizes.find((s) => s.size === "L")?.price_vnd ?? 0)
-                  : (item.price_vnd ?? 0);
+              // Latte items always have sizes — show L base price as reference
+              // Fusion items also use sizes — same logic applies
+              const lSize = item.sizes.find((s) => s.size === "L");
+              const displayPrice = lSize?.base_price_vnd ?? item.sizes[0]?.base_price_vnd ?? 0;
 
               return (
                 <button
@@ -256,12 +256,10 @@ export default function StaffOrdersPage() {
                     {item.category}
                   </p>
                   <div className="text-primary font-semibold text-sm mt-1">
-                    🐟 {displayPrice / 1000} cá
-                    {item.category === "daily" && (
-                      <span className="text-[10px] font-normal text-muted-foreground ml-1">
-                        (L)
-                      </span>
-                    )}
+                    🐟 {displayPrice / 1000}+ cá
+                    <span className="text-[10px] font-normal text-muted-foreground ml-1">
+                      (L)
+                    </span>
                   </div>
                 </button>
               );

@@ -30,6 +30,7 @@ export async function GET(): Promise<NextResponse> {
         umami: p.umami ?? null,
         color: p.color ?? null,
         is_available: p.is_available,
+        reference_latte_item_id: p.reference_latte_item_id,
         size_config: p.powderSizeConfigs.map((c) => ({
           size: c.size,
           grams: Number(c.grams),

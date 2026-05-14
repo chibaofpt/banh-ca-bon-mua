@@ -8,6 +8,8 @@ import Link from 'next/link';
 
 import type { MenuData, MenuItem } from '@/src/lib/types/menu';
 import { fetchMenu } from '@/src/services/menuService';
+import { fetchPowders } from '@/src/services/powderService';
+import { usePowderStore } from '@/src/lib/store/powderStore';
 import TabBar from '@/src/components/menu/TabBar';
 import type { TabId } from '@/src/components/menu/TabBar';
 import MenuCard from '@/src/components/menu/MenuCard';
@@ -33,12 +35,17 @@ export default function MenuPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
 
+  const setPowderData = usePowderStore((s) => s.setPowderData);
+
   useEffect(() => {
-    fetchMenu()
-      .then(setData)
-      .catch((error) => console.error("Error fetching menu:", error))
+    Promise.all([fetchMenu(), fetchPowders()])
+      .then(([menuRes, powderRes]) => {
+        setData(menuRes);
+        setPowderData(powderRes);
+      })
+      .catch((error) => console.error("Error fetching menu or powders:", error))
       .finally(() => setLoading(false));
-  }, []);
+  }, [setPowderData]);
 
   const filteredItems = useMemo(() => {
     if (!data) return [];
@@ -130,6 +137,7 @@ export default function MenuPage() {
           <ProductModal
             key="product-modal-root"
             item={selectedItem}
+            latteItems={data?.latte ?? []}
             onClose={() => setSelectedItem(null)}
           />
         )}

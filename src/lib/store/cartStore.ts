@@ -2,14 +2,15 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { CustomerCartItem } from "@/src/lib/types/customerCart";
+import type { CartItem } from "@/src/lib/types/cart";
 
 interface CartState {
-  items: CustomerCartItem[];
+  items: CartItem[];
   isCartOpen: boolean;
   setCartOpen: (open: boolean) => void;
-  addItem: (newItem: Omit<CustomerCartItem, "quantity">) => void;
-  removeItem: (id: string, size: string) => void;
+  addItem: (newItem: Omit<CartItem, "cartId">) => void;
+  removeItem: (cartId: string) => void;
+  updateQuantity: (cartId: string, quantity: number) => void;
   clearCart: () => void;
 }
 
@@ -26,28 +27,23 @@ export const useCartStore = create<CartState>()(
 
       addItem: (newItem) => {
         const { items } = get();
-        const existingIndex = items.findIndex(
-          (i) =>
-            i.id === newItem.id &&
-            i.size === newItem.size &&
-            i.sweetness === newItem.sweetness
-        );
-
-        if (existingIndex > -1) {
-          const newItems = [...items];
-          newItems[existingIndex] = {
-            ...newItems[existingIndex],
-            quantity: newItems[existingIndex].quantity + 1,
-          };
-          set({ items: newItems });
-        } else {
-          set({ items: [...items, { ...newItem, quantity: 1 }] });
-        }
+        // In Phase 2, we don't deduplicate by id+size+sweetness anymore.
+        // Each addition is a unique row with its own cartId.
+        const cartId = crypto.randomUUID();
+        set({ items: [...items, { ...newItem, cartId }] });
       },
 
-      removeItem: (id, size) => {
+      removeItem: (cartId) => {
         set({
-          items: get().items.filter((i) => !(i.id === id && i.size === size)),
+          items: get().items.filter((i) => i.cartId !== cartId),
+        });
+      },
+
+      updateQuantity: (cartId, quantity) => {
+        set({
+          items: get().items.map((i) =>
+            i.cartId === cartId ? { ...i, quantity: Math.max(1, quantity) } : i
+          ),
         });
       },
 
@@ -62,4 +58,4 @@ export const useCartTotalItems = () =>
   useCartStore((s) => s.items.reduce((sum, i) => sum + i.quantity, 0));
 
 export const useCartTotalPrice = () =>
-  useCartStore((s) => s.items.reduce((sum, i) => sum + i.totalPrice * i.quantity, 0));
+  useCartStore((s) => s.items.reduce((sum, i) => sum + i.clientPriceVnd * i.quantity, 0));

@@ -1,117 +1,161 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X } from "lucide-react";
+import { X, Minus, Plus } from "lucide-react";
+import type { MenuItem, AddonGroup, SweetnessLevel, Size } from "@/src/lib/types/menu";
+import type { IceOption, CartItem } from "@/src/lib/types/cart";
+import { usePowderStore } from "@/src/lib/store/powderStore";
 import { cn } from "@/src/utils/cn";
-import type { MenuItem, Size, SweetnessLevel, AddonGroup } from "@/src/lib/types/menu";
-import type { CartItem } from "@/src/lib/types/cart";
-
-// ── Constants ────────────────────────────────────────────────────────────────
-
-const SWEETNESS_LEVELS: SweetnessLevel[] = ["NONE", "QUARTER", "HALF", "THREE_QUARTER", "FULL"];
-const SWEETNESS_LABELS: Record<SweetnessLevel, string> = {
-  NONE: "Lạt",
-  QUARTER: "Ít ngọt",
-  HALF: "Vừa",
-  THREE_QUARTER: "Ngọt",
-  FULL: "Rất ngọt",
-};
-
-// ── Props ────────────────────────────────────────────────────────────────────
+import { calcLattePrice, calcFusionPrice, resolveGram } from "@/src/utils/pricing";
+import { SWEETNESS_OPTIONS, ICE_OPTIONS, SIZE_LABELS } from "@/src/constants/orderOptions";
 
 interface AddonModalProps {
   item: MenuItem | null;
-  /** If set, the unit price of this item will be forced to 0 (PRODUCT voucher free item). */
+  latteItems: MenuItem[];
   freeVoucherId?: string;
   onClose: () => void;
   onConfirm: (cartItem: CartItem) => void;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm }: AddonModalProps) {
+  const powders = usePowderStore((s) => s.data);
+  const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
 
-/** Derive the initial selected option ids from group defaults. */
-function initSelectedOptionIds(item: MenuItem): string[] {
-  return item.addon_groups.flatMap((g) =>
-    g.options.filter((o) => o.is_default).map((o) => o.id)
-  );
-}
+  // ── State ───────────────────────────────────────────────────────────────
 
-/** Derive the initial quantity map for QUANTITY groups (all zero). */
-function initQuantityMap(item: MenuItem): Record<string, number> {
-  return Object.fromEntries(
-    item.addon_groups
-      .filter((g) => g.type === "QUANTITY")
-      .map((g) => [g.id, 0])
-  );
-}
-
-// ── Component ────────────────────────────────────────────────────────────────
-
-/** Modal for customising a menu item before adding to the staff counter cart. */
-export function AddonModal({ item, freeVoucherId, onClose, onConfirm }: AddonModalProps) {
-  // Use optional chaining and default values to prevent crashes when item is null
-  // Phase 2: all items have sizes — default to first available size (L if present, else first).
   const [selectedSize, setSelectedSize] = useState<Size>(() => {
     const available = item?.sizes ?? [];
     return (available.find((s) => s.size === "L") ?? available[0])?.size ?? "M";
   });
+  const [sweetness, setSweetness] = useState<SweetnessLevel>("QUARTER");
+  const [iceOption, setIceOption] = useState<IceOption>("NORMAL");
+  const [coldwhisk, setColdwhisk] = useState(false);
+  const [selectedPowderId, setSelectedPowderId] = useState<string>(item?.resolved_default_powder_id ?? "");
+  const [selectedMilkId, setSelectedMilkId] = useState<string>(() => {
+    return item?.milk_types?.find(m => m.is_default)?.id ?? item?.milk_types?.[0]?.id ?? "";
+  });
+
   const [selectedOptionIds, setSelectedOptionIds] = useState<string[]>(() =>
-    item ? initSelectedOptionIds(item) : []
+    item?.addon_groups.flatMap((g) =>
+      g.options.filter((o) => o.is_default).map((o) => o.id)
+    ) ?? []
   );
   const [quantityMap, setQuantityMap] = useState<Record<string, number>>(() =>
-    item ? initQuantityMap(item) : {}
+    item ? Object.fromEntries(
+      item.addon_groups
+        .filter((g) => g.type === "QUANTITY")
+        .map((g) => [g.id, 0])
+    ) : {}
   );
-  const [sweetness, setSweetness] = useState<SweetnessLevel>("QUARTER");
   const [note, setNote] = useState("");
 
-  // ── Price ───────────────────────────────────────────────────────────────
+  if (!item) return null;
 
-  const calcUnitPrice = (): number => {
-    if (!item) return 0;
-    if (freeVoucherId) return 0;
+  // ── Derived state ────────────────────────────────────────────────────────
+  
+  const isLatte = item.category === "latte";
+  const activePowderId = isLatte ? (item.powder?.id ?? "") : selectedPowderId;
+  const activePowder = powders.find((p) => p.id === activePowderId);
+  const activePowderPricePerGram = activePowder?.price_per_gram ?? 0;
 
-    // Phase 2: all items use base_price_vnd from sizes. Client price is estimate — server recomputes.
-    const base = item.sizes.find((s) => s.size === selectedSize)?.base_price_vnd ?? 0;
+  const quantityGroups = useMemo(
+    () => item.addon_groups.filter((g) => g.type === "QUANTITY"),
+    [item.addon_groups]
+  );
 
-    const addonsCost = item.addon_groups
-      .flatMap((g) => {
-        if (g.type === "QUANTITY") {
-          const qty = quantityMap[g.id] ?? 0;
-          return qty > 0 ? [qty * (g.options[0]?.price_vnd ?? 0)] : [];
-        }
-        return g.options
-          .filter((o) => selectedOptionIds.includes(o.id))
-          .map((o) => o.price_vnd);
-      })
-      .reduce((s, v) => s + v, 0);
+  const selectorGroups = useMemo(
+    () => item.addon_groups.filter((g) => g.type === "SELECTOR"),
+    [item.addon_groups]
+  );
 
-    return base + addonsCost;
-  };
+  const toggleGroups = useMemo(
+    () => item.addon_groups.filter((g) => g.type === "TOGGLE"),
+    [item.addon_groups]
+  );
 
-  // ── Addon toggle helpers ─────────────────────────────────────────────────
+  // ── Pricing ──────────────────────────────────────────────────────────────
 
-  const handleSelectorChange = (group: AddonGroup, optionId: string) => {
-    const groupOptionIds = group.options.map((o) => o.id);
-    setSelectedOptionIds((prev) => [
-      ...prev.filter((id) => !groupOptionIds.includes(id)),
-      optionId,
-    ]);
-  };
+  const getPriceForContext = (targetSize: Size, targetPowderId: string) => {
+    const sizeObj = item.sizes.find((s) => s.size === targetSize);
+    const base_price_vnd = sizeObj?.base_price_vnd ?? 0;
 
-  const handleToggleChange = (optionId: string) => {
-    setSelectedOptionIds((prev) =>
-      prev.includes(optionId)
-        ? prev.filter((id) => id !== optionId)
-        : [...prev, optionId]
+    const pwd = powders.find((p) => p.id === targetPowderId);
+    const pwd_price_per_gram = pwd?.price_per_gram ?? 0;
+
+    const gram = resolveGram(
+      targetSize,
+      item.custom_powder_grams,
+      pwd?.size_config ?? [],
+      defaultPowderGrams
     );
+
+    let baseDrinkPrice = 0;
+
+    if (isLatte) {
+      const milk_ml = sizeObj?.milk_ml ?? 0;
+      const milk = item.milk_types?.find((m) => m.id === selectedMilkId);
+      const milk_price_per_ml = milk?.price_per_ml ?? 40;
+
+      baseDrinkPrice = calcLattePrice({
+        base_price_vnd,
+        gram,
+        powder_price_per_gram: pwd_price_per_gram,
+        milk_ml,
+        milk_price_per_ml,
+      });
+    } else {
+      let premium_latte = 0;
+      const defaultPowder = powders.find((p) => p.id === item.resolved_default_powder_id);
+      if (pwd?.reference_latte_item_id && defaultPowder?.reference_latte_item_id) {
+        const selectedLatteBase = latteItems.find((i) => i.id === pwd.reference_latte_item_id)?.sizes.find((s) => s.size === targetSize)?.base_price_vnd ?? 0;
+        const defaultLatteBase = latteItems.find((i) => i.id === defaultPowder.reference_latte_item_id)?.sizes.find((s) => s.size === targetSize)?.base_price_vnd ?? 0;
+        premium_latte = selectedLatteBase - defaultLatteBase;
+      }
+
+      baseDrinkPrice = calcFusionPrice({
+        base_price_vnd,
+        gram,
+        powder_price_per_gram: pwd_price_per_gram,
+        premium_latte,
+      });
+    }
+
+    let addonsCost = 0;
+    for (const g of item.addon_groups) {
+      if (g.type === "QUANTITY") {
+        const qty = quantityMap[g.id] ?? 0;
+        const opt = g.options[0];
+        if (qty > 0 && opt) {
+          if (opt.gram_value != null) {
+            addonsCost += qty * (opt.gram_value * pwd_price_per_gram);
+          } else {
+            addonsCost += qty * opt.price_vnd;
+          }
+        }
+      } else {
+        for (const opt of g.options) {
+          if (selectedOptionIds.includes(opt.id)) {
+            addonsCost += opt.price_vnd;
+          }
+        }
+      }
+    }
+
+    return { baseDrinkPrice, addonsCost, unitPrice: baseDrinkPrice + addonsCost };
   };
+
+  const currentPriceContext = getPriceForContext(selectedSize, activePowderId);
+  const currentBasePowderPriceContext = getPriceForContext(selectedSize, item.resolved_default_powder_id ?? "");
+
+  // If free voucher is used, final prices are 0. We still use currentPriceContext for UI display, 
+  // but override unitPrice / addonsCost for the CartItem payload.
+  const finalUnitPrice = freeVoucherId ? 0 : currentPriceContext.unitPrice;
+  const finalAddonsCost = freeVoucherId ? 0 : currentPriceContext.addonsCost;
 
   // ── Validation ───────────────────────────────────────────────────────────
 
   const isConfirmDisabled = (): boolean => {
-    if (!item) return true;
-    // All items require a size in Phase 2
     if (!selectedSize) return true;
     for (const g of item.addon_groups) {
       if (
@@ -125,14 +169,32 @@ export function AddonModal({ item, freeVoucherId, onClose, onConfirm }: AddonMod
     return false;
   };
 
-  // ── Submit ───────────────────────────────────────────────────────────────
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
+  const handleSelectorChange = (group: AddonGroup, optionId: string) => {
+    const defaultOpt = group.options.find(o => o.is_default);
+    const groupOptionIds = group.options.map((o) => o.id);
+
+    setSelectedOptionIds((prev) => {
+      if (prev.includes(optionId)) {
+        // Toggle off -> return to default option if exists
+        const next = prev.filter((id) => id !== optionId);
+        if (defaultOpt) next.push(defaultOpt.id);
+        return next;
+      }
+      return [...prev.filter((id) => !groupOptionIds.includes(id)), optionId];
+    });
+  };
+
+  const handleToggleChange = (optionId: string) => {
+    setSelectedOptionIds((prev) =>
+      prev.includes(optionId)
+        ? prev.filter((id) => id !== optionId)
+        : [...prev, optionId]
+    );
+  };
 
   const handleConfirm = () => {
-    if (!item) return;
-    const unitPrice = calcUnitPrice();
-    const basePrice = item.sizes.find((s) => s.size === selectedSize)?.base_price_vnd ?? 0;
-    const addonsPrice = freeVoucherId ? 0 : unitPrice - basePrice;
-
     const quantityAddonOptions = item.addon_groups
       .filter((g) => g.type === "QUANTITY")
       .flatMap((g) => {
@@ -142,318 +204,450 @@ export function AddonModal({ item, freeVoucherId, onClose, onConfirm }: AddonMod
           : [];
       });
 
-    const cartItem: CartItem = {
+    onConfirm({
       cartId: crypto.randomUUID(),
       menuItemId: item.id,
       name: item.name,
       category: item.category,
       imageUrl: item.image_url,
-      size: selectedSize,   // always a Size in Phase 2
-      unitPrice,
+      size: selectedSize,
+      unitPrice: finalUnitPrice,
       quantity: 1,
       sweetness,
-      iceOption: "NORMAL",
-      coldwhisk: false,
+      iceOption,
+      coldwhisk,
       note,
       selectedOptionIds,
       quantityMap,
-      addonsPrice,
+      addonsPrice: finalAddonsCost,
       quantityAddonOptions,
-      clientPriceVnd: unitPrice,
+      selectedPowderId: isLatte ? undefined : selectedPowderId,
+      selectedMilkTypeId: isLatte ? selectedMilkId : undefined,
+      clientPriceVnd: finalUnitPrice,
       ...(freeVoucherId ? { productVoucherId: freeVoucherId } : {}),
-    };
-
-    onConfirm(cartItem);
+    });
   };
-
-  const unitPrice = calcUnitPrice();
-
-  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <AnimatePresence>
-      {item && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] bg-foreground/40 backdrop-blur-sm"
-            onClick={onClose}
-          />
-          <motion.div
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 30, stiffness: 300 }}
-            className="fixed inset-x-0 bottom-0 z-[61] max-h-[92vh] overflow-y-auto rounded-t-3xl bg-background border-t border-border shadow-2xl"
-          >
-            <div className="px-5 pb-32 pt-2">
-              {/* Header */}
-              <div className="flex items-start justify-between gap-3 pt-3 pb-4">
-                <div className="flex-1 min-w-0">
-                  <h2 className="font-serif text-2xl font-bold text-foreground">
-                    {item.name}
-                  </h2>
-                  {item.description && (
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {item.description}
-                    </p>
-                  )}
-                  {freeVoucherId && (
-                    <span className="inline-block mt-2 text-xs bg-green-500/20 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">
-                      🎁 Miễn phí
-                    </span>
-                  )}
-                </div>
-                <button
-                  onClick={onClose}
-                  className="shrink-0 w-9 h-9 rounded-full bg-secondary/60 hover:bg-secondary flex items-center justify-center"
-                  aria-label="Đóng"
-                >
-                  <X className="w-5 h-5 text-foreground" />
-                </button>
+      <motion.div
+        key="addon-backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-[60] bg-foreground/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      <motion.div
+        key="addon-content"
+        initial={{ y: "100%" }}
+        animate={{ y: 0 }}
+        exit={{ y: "100%" }}
+        transition={{ type: "spring", damping: 30, stiffness: 300 }}
+        className="fixed inset-x-0 bottom-0 z-[61] max-h-[92vh] overflow-y-auto rounded-t-3xl bg-background border-t border-border shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 w-9 h-9 rounded-full bg-secondary/60 flex items-center justify-center transition-transform hover:bg-secondary z-10"
+        >
+          <X className="w-5 h-5 text-foreground" />
+        </button>
+
+        <div className="px-5 pb-32 pt-2">
+          {/* Header */}
+          <div className="pt-3 pb-4 border-b border-border/40">
+            <h2 className="font-serif text-2xl font-bold text-foreground">{item.name}</h2>
+            {item.description && (
+              <p className="text-sm text-muted-foreground mt-1 leading-relaxed">{item.description}</p>
+            )}
+            {freeVoucherId && (
+              <span className="inline-block mt-2 text-xs bg-green-500/20 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">
+                🎁 Miễn phí
+              </span>
+            )}
+          </div>
+
+          {/* Size Selector */}
+          {item.sizes.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                Chọn Size *
+              </h3>
+              <div className="grid grid-cols-3 gap-2">
+                {item.sizes.map((s) => {
+                  const sizePrice = getPriceForContext(s.size, activePowderId).unitPrice;
+                  return (
+                    <button
+                      key={s.size}
+                      onClick={() => setSelectedSize(s.size)}
+                      className={cn(
+                        "rounded-xl border-2 py-3 px-2 text-center transition-all flex flex-col items-center justify-center gap-1",
+                        selectedSize === s.size
+                          ? "border-primary bg-primary/5 shadow-inner"
+                          : "border-border bg-background hover:border-primary/30"
+                      )}
+                    >
+                      <span className="block font-semibold text-sm text-foreground">
+                        {SIZE_LABELS[s.size]}
+                      </span>
+                      <p className="text-[11px] font-semibold text-primary mt-1">
+                        🐟 {sizePrice / 1000} cá
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
+            </div>
+          )}
 
-              {/* Size picker — all Phase 2 items have sizes */}
-              {item.sizes.length > 0 && (
-                <div className="mb-5">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                    Chọn Size *
-                  </h3>
-                  <div className="grid grid-cols-3 gap-2">
-                    {item.sizes.map((s) => (
-                      <button
-                        key={s.size}
-                        onClick={() => setSelectedSize(s.size)}
-                        className={cn(
-                          "rounded-xl border-2 py-3 px-2 text-center transition-all",
-                          selectedSize === s.size
-                            ? "border-primary bg-primary/5"
-                            : "border-border bg-background hover:border-primary/30"
-                        )}
-                      >
-                        <span className="block font-semibold text-sm text-foreground">
-                          {s.size}
-                        </span>
-                        <span className="block text-xs font-semibold text-primary mt-1">
-                          🐟 {s.base_price_vnd / 1000} cá
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Sweetness */}
-              <div className="mb-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Độ Ngọt
-                  </h3>
-                  <span className="text-sm font-semibold text-primary">
-                    {SWEETNESS_LABELS[sweetness]}
-                  </span>
-                </div>
-                {(() => {
-                  const activeIdx = SWEETNESS_LEVELS.indexOf(sweetness);
-                  return (
-                    <div className="px-2.5">
-                      <div className="relative h-5 flex items-center">
-                        <input
-                          type="range"
-                          min={0}
-                          max={4}
-                          step={1}
-                          value={SWEETNESS_LEVELS.indexOf(sweetness)}
-                          onChange={(e) =>
-                            setSweetness(SWEETNESS_LEVELS[Number(e.target.value)])
-                          }
-                          className="w-full accent-primary"
-                        />
-                        <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 z-0">
-                          {SWEETNESS_LEVELS.map((s, i) => {
-                            const filled = i <= activeIdx;
-                            const isActive = i === activeIdx;
-                            return (
-                              <button
-                                key={s}
-                                type="button"
-                                onClick={() => setSweetness(s)}
-                                style={{ left: `${(i / 4) * 100}%` }}
-                                className="pointer-events-auto absolute top-1/2 -translate-x-1/2 -translate-y-1/2 p-2"
-                              >
-                                <span
-                                  className={cn(
-                                    "block w-2 h-2 rounded-full transition-all",
-                                    filled
-                                      ? "bg-primary-foreground/80"
-                                      : "bg-muted-foreground/40",
-                                    isActive && "opacity-0"
-                                  )}
-                                />
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                      <div className="relative h-5 mt-2">
-                        {SWEETNESS_LEVELS.map((s, i) => (
-                          <button
-                            key={s}
-                            type="button"
-                            onClick={() => setSweetness(s)}
-                            style={{ left: `${(i / 4) * 100}%` }}
-                            className={cn(
-                              "absolute top-0 -translate-x-1/2 text-[10px] whitespace-nowrap transition-colors",
-                              sweetness === s
-                                ? "text-primary font-semibold"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            {SWEETNESS_LABELS[s]}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })()}
-              </div>
-
-              {/* Addon groups */}
-              {item.addon_groups.map((group) => {
-                if (group.type === "QUANTITY") {
-                  return (
-                    <div key={group.id} className="mb-5">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                        {group.name}
-                      </h3>
-                      <div className="flex gap-2">
-                        {Array.from(
-                          { length: (group.max_quantity ?? 3) + 1 },
-                          (_, i) => i
-                        ).map((v) => (
-                          <button
-                            key={v}
-                            onClick={() =>
-                              setQuantityMap((prev) => ({ ...prev, [group.id]: v }))
-                            }
-                            className={cn(
-                              "px-4 py-2 rounded-full text-sm font-medium transition-all",
-                              (quantityMap[group.id] ?? 0) === v
-                                ? "bg-primary text-primary-foreground shadow-md"
-                                : "bg-secondary/60 text-foreground/70 hover:bg-secondary"
-                            )}
-                          >
-                            {v === 0 ? "Không" : `+${v}g`}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                }
-
-                if (group.type === "SELECTOR") {
-                  return (
-                    <div key={group.id} className="mb-5">
-                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                        {group.name}{group.is_required ? " *" : ""}
-                      </h3>
-                      <div className="grid grid-cols-3 gap-2">
-                        {group.options.map((opt) => {
-                          const checked = selectedOptionIds.includes(opt.id);
-                          return (
-                            <button
-                              key={opt.id}
-                              onClick={() => handleSelectorChange(group, opt.id)}
-                              className={cn(
-                                "rounded-xl border-2 py-2.5 px-3 text-center transition-all",
-                                checked
-                                  ? "border-primary bg-primary/5"
-                                  : "border-border bg-background hover:border-primary/30"
-                              )}
-                            >
-                              <span className="block font-semibold text-sm text-foreground">
-                                {opt.label}
-                              </span>
-                              <span className="block text-[11px] font-semibold text-primary mt-0.5">
-                                {opt.price_vnd > 0
-                                  ? `+${opt.price_vnd / 1000} 🐟`
-                                  : "Miễn phí"}
-                              </span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                }
-
-                // TOGGLE
-                return (
-                  <div key={group.id} className="mb-5">
-                    <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                      {group.name}
-                    </h3>
-                    <div className="space-y-2">
-                      {group.options.map((opt) => {
-                        const checked = selectedOptionIds.includes(opt.id);
+          {/* Sweetness Slider */}
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Độ Ngọt
+              </h3>
+              <span className="text-sm font-semibold text-primary">
+                {SWEETNESS_OPTIONS.find((o) => o.value === sweetness)?.label}
+              </span>
+            </div>
+            {(() => {
+              const activeIdx = SWEETNESS_OPTIONS.findIndex((o) => o.value === sweetness);
+              return (
+                <div className="px-3">
+                  <div className="relative h-5 flex items-center">
+                    <input
+                      type="range"
+                      min={0}
+                      max={SWEETNESS_OPTIONS.length - 1}
+                      step={1}
+                      value={activeIdx}
+                      onChange={(e) =>
+                        setSweetness(SWEETNESS_OPTIONS[Number(e.target.value)].value)
+                      }
+                      className="w-full h-1.5 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                    />
+                    <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 z-0">
+                      {SWEETNESS_OPTIONS.map((opt, i) => {
+                        const filled = i <= activeIdx;
+                        const isActive = i === activeIdx;
                         return (
-                          <button
-                            key={opt.id}
-                            onClick={() => handleToggleChange(opt.id)}
-                            className={cn(
-                              "w-full flex items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all",
-                              checked
-                                ? "border-primary bg-primary/5"
-                                : "border-border bg-background hover:border-primary/30"
-                            )}
+                          <div
+                            key={opt.value}
+                            style={{ left: `${(i / (SWEETNESS_OPTIONS.length - 1)) * 100}%` }}
+                            className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 p-2"
                           >
-                            <span className="font-semibold text-sm text-foreground">
-                              {opt.label}
-                            </span>
-                            {opt.price_vnd > 0 && (
-                              <span className="text-sm font-semibold text-primary whitespace-nowrap ml-3">
-                                +{opt.price_vnd / 1000} 🐟
-                              </span>
-                            )}
-                          </button>
+                            <span
+                              className={cn(
+                                "block w-2.5 h-2.5 rounded-full transition-all border",
+                                filled
+                                  ? "bg-primary border-primary"
+                                  : "bg-background border-border",
+                                isActive && "scale-150 shadow-sm"
+                              )}
+                            />
+                          </div>
                         );
                       })}
                     </div>
                   </div>
-                );
-              })}
+                  <div className="relative h-5 mt-3">
+                    {SWEETNESS_OPTIONS.map((opt, i) => (
+                      <div
+                        key={opt.value}
+                        style={{ left: `${(i / (SWEETNESS_OPTIONS.length - 1)) * 100}%` }}
+                        className={cn(
+                          "absolute top-0 -translate-x-1/2 text-[10px] whitespace-nowrap transition-colors",
+                          sweetness === opt.value
+                            ? "text-primary font-semibold"
+                            : "text-muted-foreground"
+                        )}
+                      >
+                        {opt.label}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
 
-              {/* Note */}
-              <div className="mb-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-                  Ghi chú
-                </h3>
-                <textarea
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  placeholder="Ví dụ: ít đá, không đường..."
-                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 min-h-[60px] resize-none"
-                />
+          {/* Ice Option */}
+          <div className="mt-6">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              Lượng Đá
+            </h3>
+            <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-2 px-2">
+              {ICE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setIceOption(iceOption === opt.value ? "NORMAL" : opt.value)}
+                  className={cn(
+                    "px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all border",
+                    iceOption === opt.value
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-secondary/40 text-foreground border-transparent hover:bg-secondary"
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Coldwhisk */}
+          <div className="mt-6 flex items-center justify-between border border-border bg-card p-3 rounded-xl shadow-sm">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+                Đánh Lạnh (Coldwhisk)
+              </h3>
+              <p className="text-[11px] text-muted-foreground mt-1">Lớp foam matcha mịn màng</p>
+            </div>
+            <button
+              onClick={() => setColdwhisk(!coldwhisk)}
+              className={cn(
+                "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
+                coldwhisk ? "bg-primary" : "bg-secondary"
+              )}
+            >
+              <span
+                className={cn(
+                  "inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm",
+                  coldwhisk ? "translate-x-6" : "translate-x-1"
+                )}
+              />
+            </button>
+          </div>
+
+          {/* Powder Swap (Fusion) */}
+          {!isLatte && item.allowed_powder_ids.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                Đổi bột Matcha
+              </h3>
+              <div className="flex flex-col gap-2">
+                {[item.resolved_default_powder_id!, ...item.allowed_powder_ids.filter(id => id !== item.resolved_default_powder_id)].map((pid) => {
+                  const pwd = powders.find((p) => p.id === pid);
+                  if (!pwd) return null;
+                  
+                  const priceContext = getPriceForContext(selectedSize, pid);
+                  const diff = priceContext.unitPrice - currentBasePowderPriceContext.unitPrice;
+
+                  return (
+                    <button
+                      key={pid}
+                      onClick={() => setSelectedPowderId(pid)}
+                      className={cn(
+                        "rounded-xl border-2 py-2 px-3 text-left transition-all flex items-center justify-between",
+                        selectedPowderId === pid
+                          ? "border-primary bg-primary/5"
+                          : "border-border bg-background hover:border-primary/30"
+                      )}
+                    >
+                      <div>
+                        <span className="block font-semibold text-sm text-foreground">{pwd.name}</span>
+                        <span className="block text-[11px] text-muted-foreground mt-1">
+                          {pwd.price_per_gram / 1000}k / gram
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <span className="block font-semibold text-sm text-foreground">
+                          {priceContext.unitPrice / 1000}k
+                        </span>
+                        {diff !== 0 && (
+                          <span className={cn(
+                            "block text-[10px] font-semibold mt-0.5",
+                            diff > 0 ? "text-red-500" : "text-green-600"
+                          )}>
+                            {diff > 0 ? "+" : ""}{diff / 1000}k
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
             </div>
+          )}
 
-            {/* Sticky bottom bar */}
-            <div className="fixed bottom-0 inset-x-0 z-[62] bg-background border-t border-border px-5 py-4">
-              <button
-                onClick={handleConfirm}
-                disabled={isConfirmDisabled()}
-                className="w-full bg-primary text-primary-foreground py-3.5 rounded-2xl font-semibold text-sm shadow-lg hover:bg-primary/90 transition disabled:opacity-50"
-              >
-                {freeVoucherId
-                  ? "Thêm vào giỏ • 🎁 Miễn phí"
-                  : `Thêm vào giỏ 🐟 → 🐟 ${unitPrice / 1000} cá`}
-              </button>
+          {/* Milk Swap (Latte) */}
+          {isLatte && item.milk_types.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                Đổi loại sữa
+              </h3>
+              <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar -mx-2 px-2">
+                {item.milk_types.map((milk) => (
+                  <button
+                    key={milk.id}
+                    onClick={() => setSelectedMilkId(milk.id)}
+                    className={cn(
+                      "flex-shrink-0 flex flex-col items-center rounded-xl border-2 px-4 py-2 text-center transition-all",
+                      selectedMilkId === milk.id
+                        ? "border-primary bg-primary/5 shadow-inner"
+                        : "border-border bg-background hover:border-primary/30"
+                    )}
+                  >
+                    <span className="font-semibold text-sm text-foreground whitespace-nowrap">
+                      {milk.name}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </motion.div>
-        </>
-      )}
+          )}
+
+          {/* Addon: SELECTOR */}
+          {selectorGroups.map((group) => (
+            <div key={group.id} className="mt-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                {group.name}{group.is_required ? " *" : ""}
+              </h3>
+              <div className="space-y-2">
+                {/* Filter out default options to behave like toggle */}
+                {group.options.filter(o => !o.is_default).map((opt) => {
+                  const isSelected = selectedOptionIds.includes(opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      onClick={() => handleSelectorChange(group, opt.id)}
+                      className={cn(
+                        "w-full flex items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all",
+                        isSelected
+                          ? "border-primary bg-primary/5 shadow-inner"
+                          : "border-border bg-background hover:border-primary/30"
+                      )}
+                    >
+                      <span className="font-semibold text-sm text-foreground">{opt.label}</span>
+                      {opt.price_vnd > 0 && (
+                        <span className="text-sm font-semibold text-primary">
+                          +{opt.price_vnd / 1000} 🐟
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          {/* Addon: QUANTITY */}
+          {quantityGroups.map((group) => {
+            const qty = quantityMap[group.id] ?? 0;
+            const max = group.max_quantity ?? 10;
+            const opt = group.options[0];
+            if (!opt) return null;
+            
+            const pricePerQty = opt.gram_value != null 
+                ? (opt.gram_value * activePowderPricePerGram) 
+                : opt.price_vnd;
+
+            return (
+              <div key={group.id} className="mt-6">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                  {group.name}
+                </h3>
+                <div className="flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+                  <div>
+                    <span className="font-semibold text-sm text-foreground">{group.name}</span>
+                    {pricePerQty > 0 && (
+                      <p className="text-[11px] font-semibold text-primary mt-1">
+                        +{pricePerQty / 1000} 🐟 / phần
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 bg-secondary/40 rounded-full px-2 py-1">
+                    <button
+                      onClick={() =>
+                        setQuantityMap((prev) => ({
+                          ...prev,
+                          [group.id]: Math.max(0, qty - 1),
+                        }))
+                      }
+                      className="w-7 h-7 rounded-full bg-background flex items-center justify-center hover:bg-background/80 shadow-sm transition-colors"
+                    >
+                      <Minus className="w-3 h-3 text-foreground" />
+                    </button>
+                    <span className="text-sm font-semibold w-4 text-center text-foreground">
+                      {qty}
+                    </span>
+                    <button
+                      onClick={() =>
+                        setQuantityMap((prev) => ({
+                          ...prev,
+                          [group.id]: Math.min(max, qty + 1),
+                        }))
+                      }
+                      className="w-7 h-7 rounded-full bg-background flex items-center justify-center hover:bg-background/80 shadow-sm transition-colors"
+                    >
+                      <Plus className="w-3 h-3 text-foreground" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Addon: TOGGLE */}
+          {toggleGroups.length > 0 && (
+            <div className="mt-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+                Thêm Topping
+              </h3>
+              <div className="space-y-2">
+                {toggleGroups.map((group) => {
+                  const toggleOpt = group.options[0];
+                  if (!toggleOpt) return null;
+                  const enabled = selectedOptionIds.includes(toggleOpt.id);
+                  return (
+                    <button
+                      key={group.id}
+                      onClick={() => handleToggleChange(toggleOpt.id)}
+                      className={cn(
+                        "w-full flex items-center justify-between rounded-xl border-2 px-4 py-3 text-left transition-all",
+                        enabled
+                          ? "border-primary bg-primary/5 shadow-inner"
+                          : "border-border bg-background hover:border-primary/30"
+                      )}
+                    >
+                      <span className="font-semibold text-sm text-foreground">{group.name}</span>
+                      <span className="text-sm font-semibold text-primary">
+                        +{toggleOpt.price_vnd / 1000} 🐟
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Note */}
+          <div className="mt-6">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+              Ghi chú
+            </h3>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Ví dụ: ít đá, không đường..."
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 min-h-[60px] resize-none"
+            />
+          </div>
+        </div>
+
+        {/* Bottom Bar */}
+        <div className="fixed bottom-0 inset-x-0 z-[62] bg-background border-t border-border px-5 py-4">
+          <button
+            onClick={handleConfirm}
+            disabled={isConfirmDisabled()}
+            className="w-full bg-primary text-primary-foreground py-3.5 rounded-2xl font-semibold text-sm shadow-lg hover:bg-primary/90 transition disabled:opacity-50"
+          >
+            {freeVoucherId
+              ? "Thêm vào giỏ • 🎁 Miễn phí"
+              : `Thêm vào giỏ 🐟 → 🐟 ${currentPriceContext.unitPrice / 1000} cá`}
+          </button>
+        </div>
+      </motion.div>
     </AnimatePresence>
   );
 }

@@ -42,7 +42,7 @@ export function resolveGram(
   size: Size,
   customPowderGrams: CustomPowderGrams | null | undefined,
   powderSizeConfigs: PowderSizeConfigEntry[],
-  defaultSizeConfigs: DefaultSizeConfigEntry[]
+  defaultSizeConfigs: { size: Size; powder_gram?: number; grams?: number }[]
 ): number {
   // Level 1
   if (customPowderGrams?.[size] !== undefined && customPowderGrams[size] !== null) {
@@ -55,7 +55,7 @@ export function resolveGram(
   }
   // Level 3
   const defaultConfig = defaultSizeConfigs.find((c) => c.size === size);
-  return Number(defaultConfig?.powder_gram ?? 0);
+  return Number(defaultConfig?.powder_gram ?? defaultConfig?.grams ?? 0);
 }
 
 // ── Latte price ───────────────────────────────────────────────────────────────

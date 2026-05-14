@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { QrCode, ShoppingBag } from "lucide-react";
 import { cn } from "@/src/utils/cn";
-import { fetchMenuItems } from "@/src/services/menuService";
+import { fetchMenu } from "@/src/services/menuService";
+import { fetchPowders } from "@/src/services/powderService";
+import { usePowderStore } from "@/src/lib/store/powderStore";
 import { AddonModal } from "@/src/components/staff/AddonModal";
 import { StaffCartDrawer } from "@/src/components/staff/StaffCartDrawer";
 import { StaffOrderForm } from "@/src/components/staff/StaffOrderForm";
 import { QRScannerModal } from "@/src/components/staff/QRScannerModal";
-import type { MenuItem } from "@/src/lib/types/menu";
+import type { MenuData, MenuItem } from "@/src/lib/types/menu";
 import type { CartItem } from "@/src/lib/types/cart";
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -27,8 +29,10 @@ interface DiscountVoucher {
 export default function StaffOrdersPage() {
   // ── Server data ───────────────────────────────────────────────────────
 
+  const [menuData, setMenuData] = useState<MenuData | null>(null);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [status, setStatus] = useState<LoadStatus>("loading");
+  const setPowderData = usePowderStore((s) => s.setPowderData);
 
   // ── Modal control — only one open at a time ────────────────────────────
 
@@ -55,13 +59,15 @@ export default function StaffOrdersPage() {
 
   const loadMenu = useCallback(() => {
     setStatus("loading");
-    fetchMenuItems()
-      .then((items) => {
-        setMenuItems(items);
+    Promise.all([fetchMenu(), fetchPowders()])
+      .then(([mData, pData]) => {
+        setMenuData(mData);
+        setMenuItems([...mData.latte, ...mData.fusion]);
+        setPowderData(pData);
         setStatus("success");
       })
       .catch(() => setStatus("error"));
-  }, []);
+  }, [setPowderData]);
 
   useEffect(() => {
     loadMenu();
@@ -288,10 +294,10 @@ export default function StaffOrdersPage() {
         </button>
       )}
 
-      {/* AddonModal */}
       {selectedItem && (
         <AddonModal
           item={selectedItem}
+          latteItems={menuData?.latte ?? []}
           freeVoucherId={productVoucherId ?? undefined}
           onClose={() => {
             setSelectedItem(null);

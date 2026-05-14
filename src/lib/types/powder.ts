@@ -20,6 +20,7 @@ export interface Powder {
   umami: number | null;
   color: number | null;
   is_available: boolean;
+  reference_latte_item_id: string | null;
   /** Per-powder gram overrides (COALESCE level 2). Empty = use default_powder_gram. */
   size_config: PowderSizeConfigEntry[];
 }

@@ -1,23 +1,11 @@
 import { apiClient } from "@/src/lib/api/client";
 import type { ApiResponse } from "@/src/lib/types/api";
+import type { AdminMenuItem } from "@/src/lib/types/menu";
 
 const URL = {
   list: "/api/admin/menu",
   byId: (id: string) => `/api/admin/menu/${id}`,
 } as const;
-
-/** Shape of a menu item returned by GET /api/admin/menu */
-export interface AdminMenuItem {
-  id: string;
-  name: string;
-  description: string | null;
-  price_vnd: number;
-  category: string;
-  image_url: string | null;
-  is_available: boolean;
-  sort_order: number;
-  created_at: string;
-}
 
 /** Fetch all menu items including unavailable ones — ADMIN only */
 export async function listAdminMenuItems(): Promise<AdminMenuItem[]> {
@@ -25,8 +13,13 @@ export async function listAdminMenuItems(): Promise<AdminMenuItem[]> {
   return res.data.data;
 }
 
-/** Tạo menu item mới. */
-export async function createMenuItem(): Promise<void> {}
+/** Tạo menu item mới — POST /api/admin/menu (multipart/form-data) */
+export async function createMenuItem(fd: FormData): Promise<AdminMenuItem> {
+  const res = await apiClient.post<ApiResponse<AdminMenuItem>>(URL.list, fd, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return res.data.data;
+}
 
 /** Cập nhật menu item theo id. */
 export async function updateMenuItem(_id: string): Promise<void> {}

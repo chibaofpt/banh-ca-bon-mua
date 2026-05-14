@@ -1,28 +1,41 @@
-import type { SweetnessLevel } from "./menu";
+import type { SweetnessLevel, Size } from "./menu";
 
+export type IceOption = "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE";
+
+/** A single row in the staff/customer cart. */
 export interface CartItem {
-  /** Unique cart row id — crypto.randomUUID() when added. */
+  /** Unique cart row id — crypto.randomUUID() at add time. */
   cartId: string;
   menuItemId: string;
   name: string;
-  category: "daily" | "seasonal" | "recipe";
+  category: "latte" | "fusion";
   imageUrl: string | null;
-  /** Null for seasonal/recipe; M/L/XL for daily. */
-  size: "M" | "L" | "XL" | null;
-  /** Snapshot VND at add time: base price + addons price. Never changes after add. */
+  /** Always required — all items have M/L/XL. */
+  size: Size;
+  /** Snapshot of computed final price at add time (post-ceil, post-milk, post-powder). */
   unitPrice: number;
-  /** Default 1, adjustable in CartDrawer (min 1). */
   quantity: number;
   sweetness: SweetnessLevel;
+  iceOption: IceOption;
+  coldwhisk: boolean;
   note: string;
-  /** Option ids for SELECTOR and TOGGLE addon groups. */
+  /** Selected option ids for SELECTOR and TOGGLE groups. */
   selectedOptionIds: string[];
-  /** { [addon_group.id]: qty } for QUANTITY groups. Kept for display only. */
+  /** { [addon_group_id]: qty } for QUANTITY groups — display only. */
   quantityMap: Record<string, number>;
   /** Total addon cost snapshot in VND. */
   addonsPrice: number;
-  /** Resolved QUANTITY addon options (option_id + qty > 0 only). Sent directly to API. */
+  /** Resolved QUANTITY addon options (option_id + qty > 0 only). Sent to API. */
   quantityAddonOptions: { option_id: string; quantity: number }[];
+  /** Fusion only — selected powder id. */
+  selectedPowderId?: string;
+  /** Latte only — selected milk type id. */
+  selectedMilkTypeId?: string;
+  /**
+   * Client-computed final price (= unitPrice). Required by API.
+   * Server recomputes and rejects entire order on mismatch (PRICE_CHANGED).
+   */
+  clientPriceVnd: number;
   /** Set when this item was added via a PRODUCT voucher scan (unit price = 0). */
   productVoucherId?: string;
 }

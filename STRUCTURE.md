@@ -44,6 +44,7 @@ app/                              # Next.js App Router — entry points only, ze
       logout/route.ts
       refresh/route.ts
     menu/route.ts
+    powders/route.ts              # Public — full powder catalogue
     orders/route.ts
     orders/[id]/route.ts
     profile/route.ts
@@ -52,6 +53,7 @@ app/                              # Next.js App Router — entry points only, ze
     profile/vouchers/redeem/route.ts
     staff/orders/route.ts
     staff/scan/route.ts
+    staff/users/route.ts
     staff/vouchers/[id]/redeem/route.ts
     admin/points/add/route.ts
     admin/orders/[id]/status/route.ts
@@ -59,11 +61,16 @@ app/                              # Next.js App Router — entry points only, ze
     admin/menu/[id]/route.ts
     admin/addon-groups/route.ts
     admin/addon-groups/[id]/route.ts
-    admin/menu-item-addons/route.ts
     admin/voucher-packages/route.ts
     admin/voucher-packages/[id]/route.ts
     admin/points-log/route.ts
     admin/points-log/[id]/reverse/route.ts
+    admin/matcha-powders/route.ts
+    admin/matcha-powders/[id]/route.ts
+    admin/milk-types/route.ts
+    admin/milk-types/[id]/route.ts
+    admin/default-size-config/route.ts
+    admin/fusion-powders/route.ts
     admin/promotions/route.ts     # Phase 5 only
 
 src/                              # Frontend — never import lib/ from here
@@ -109,6 +116,9 @@ src/                              # Frontend — never import lib/ from here
       MenuItemCard.tsx
       VoucherPackageForm.tsx
       PointsLogTable.tsx
+      PowderForm.tsx
+      MilkTypeForm.tsx
+      SizeConfigForm.tsx
     staff/
       StaffMenuCard.tsx
       StaffCartDrawer.tsx
@@ -117,12 +127,16 @@ src/                              # Frontend — never import lib/ from here
       QRScannerModal.tsx
       OrderCard.tsx
   services/
-    menuService.ts
+    menuService.ts                # GET /api/menu
+    powderService.ts              # GET /api/powders
     orderService.ts               # Phase 3
     authService.ts
     profileService.ts             # Phase 3
     voucherService.ts             # Phase 4
     adminMenuService.ts
+    adminPowderService.ts         # CRUD /api/admin/matcha-powders
+    adminMilkTypeService.ts       # CRUD /api/admin/milk-types
+    adminSizeConfigService.ts     # GET/PUT /api/admin/default-size-config
     adminVoucherService.ts
     adminPointsService.ts
     adminOrderService.ts
@@ -134,6 +148,7 @@ src/                              # Frontend — never import lib/ from here
       client.ts                   # Single Axios instance — always import from here
     store/
       cartStore.ts                # Zustand cart — localStorage persisted
+      powderStore.ts              # Zustand — powder catalogue cached from /api/powders
     hooks/
       useScrollProgress.ts
       useBodyScrollLock.ts
@@ -143,10 +158,17 @@ src/                              # Frontend — never import lib/ from here
       cart.ts
       order.ts                    # Phase 3
       user.ts
+      powder.ts                   # Powder, PowderSizeConfig, MilkType types
   utils/
-    formatPrice.ts                # formatPrice(vnd: number) → "🐟 {vnd/1000} cá" — input is VND integer
+    formatPrice.ts                # formatPrice(vnd: number) → "🐟 {vnd/1000} cá"
+    pricing.ts                    # Pure pricing functions — NO imports from lib/ or services
+                                  # exports: resolveGram(), calcLattePrice(), calcFusionPrice(), ceilTo1000()
+                                  # Used by frontend (real-time estimates) and lib/pricing.ts (order time)
     deriveTags.ts
     buildZaloMessage.ts
+  constants/
+    orderOptions.ts               # SWEETNESS_OPTIONS, ICE_OPTIONS, COLDWHISK_OPTION
+                                  # Hardcoded — not fetched from API
 
 public/
   data/
@@ -158,12 +180,16 @@ lib/                              # Backend only — server-side, NEVER import i
   auth.ts                         # signJwt, verifyJwt, getSession
   sms.ts
   storage.ts                      # Supabase Storage helpers — bucket: menu-images
+  pricing.ts                      # Thin wrapper: fetches DB data → calls src/utils/pricing.ts
+                                  # exports: resolveOrderItemPrice(), buildPricingContext()
+                                  # Zero pricing logic of its own
   validations/
     auth.ts
     menu.ts
     order.ts
     voucher.ts
     points.ts
+    powder.ts                     # Zod schemas for matcha_powder, milk_type, default_size_config
 
 middleware.ts
 prisma/schema.prisma
@@ -181,8 +207,11 @@ prisma/schema.prisma
 | `src/views/` | Composition — import components + services + hooks. No direct fetch calls. |
 | `src/components/` | UI only — receive props, render. No fetching, no importing services/lib. |
 | `src/services/` | Only layer that knows API URLs. Use `apiClient` from `src/lib/api/client.ts`. |
-| `lib/` | Backend only. Never import inside `src/`. |
-| `app/api/**/route.ts` | Validate with Zod → delegate to `lib/` → return standard shape |
+| `src/utils/pricing.ts` | Pure functions only. No imports from `lib/`, `src/services/`, or `src/lib/`. Receives plain data objects as params. |
+| `src/constants/` | Hardcoded UI constants — no API calls, no imports from `lib/`. |
+| `lib/` | Backend only. Never import inside `src/`. Exception: `lib/pricing.ts` may import `src/utils/pricing.ts`. |
+| `lib/pricing.ts` | Fetches DB data via Prisma, passes plain objects to `src/utils/pricing.ts`. Zero pricing logic of its own. |
+| `app/api/**/route.ts` | Validate with Zod → delegate to `lib/` → return standard shape. |
 
 ---
 
@@ -190,11 +219,14 @@ prisma/schema.prisma
 
 | From | Can import | Cannot import |
 |---|---|---|
-| `src/components/` | `src/lib/types/`, `src/utils/` | `src/services/`, `lib/` |
-| `src/views/` | `src/components/`, `src/services/`, `src/lib/` | `lib/` |
+| `src/components/` | `src/lib/types/`, `src/utils/`, `src/constants/` | `src/services/`, `lib/` |
+| `src/views/` | `src/components/`, `src/services/`, `src/lib/`, `src/utils/`, `src/constants/` | `lib/` |
 | `src/services/` | `src/lib/types/`, `src/lib/api/client` | `lib/` |
-| `app/api/**/route.ts` | `lib/`, `src/lib/types/` | `src/components/`, `src/views/` |
-| `lib/` | other `lib/` files | `src/` |
+| `src/utils/pricing.ts` | nothing — plain params only | everything |
+| `src/constants/` | nothing | everything |
+| `app/api/**/route.ts` | `lib/`, `src/lib/types/`, `src/utils/pricing.ts` | `src/components/`, `src/views/` |
+| `lib/pricing.ts` | `lib/prisma.ts`, `src/utils/pricing.ts` | other `src/` files |
+| `lib/` (other files) | other `lib/` files | `src/` |
 
 ---
 
@@ -206,13 +238,16 @@ prisma/schema.prisma
 ```
 
 ```ts
-import HomePage          from '@/src/views/HomePage'
-import { fetchMenu }     from '@/src/services/menuService'
-import { formatPrice }   from '@/src/utils/formatPrice'
-import { useCartStore }  from '@/src/lib/store/cartStore'
-import { apiClient }     from '@/src/lib/api/client'
-import { getSession }    from '@/lib/auth'     // server only
-import { prisma }        from '@/lib/prisma'   // server only
+import HomePage                  from '@/src/views/HomePage'
+import { fetchMenu }             from '@/src/services/menuService'
+import { formatPrice }           from '@/src/utils/formatPrice'
+import { calcLattePrice }        from '@/src/utils/pricing'
+import { ICE_OPTIONS }           from '@/src/constants/orderOptions'
+import { useCartStore }          from '@/src/lib/store/cartStore'
+import { apiClient }             from '@/src/lib/api/client'
+import { getSession }            from '@/lib/auth'              // server only
+import { prisma }                from '@/lib/prisma'            // server only
+import { resolveOrderItemPrice } from '@/lib/pricing'           // server only
 ```
 
 ---
@@ -223,9 +258,10 @@ import { prisma }        from '@/lib/prisma'   // server only
 |---|---|---|
 | Views | PascalCase + Page suffix | `HomePage`, `AdminMenuPage` |
 | Components | PascalCase | `MenuCard`, `OrderCard` |
-| Services | camelCase + Service suffix | `menuService`, `staffScanService` |
+| Services | camelCase + Service suffix | `menuService`, `powderService` |
 | Hooks | camelCase + use prefix | `useScrollProgress` |
-| Utils | camelCase | `formatPrice` |
-| Type files | camelCase | `menu.ts`, `cart.ts` |
+| Utils | camelCase | `formatPrice`, `pricing` |
+| Constants | camelCase + descriptive | `orderOptions` |
+| Type files | camelCase | `menu.ts`, `powder.ts` |
 | Route handlers | `route.ts` | Next.js convention |
-| Zod schemas | camelCase, domain-named | `lib/validations/auth.ts` |
+| Zod schemas | camelCase, domain-named | `lib/validations/powder.ts` |

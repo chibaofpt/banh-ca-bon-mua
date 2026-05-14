@@ -92,6 +92,20 @@ Calls `GET /api/staff/scan?token=xxx`:
 - Soft delete only (`is_available = false`) — never hard delete
 - Display all items including `is_available = false`
 
+### Addon system
+
+Addons are **auto-populated per category** when a menu item is created — admin does not need to manually attach addons after creation.
+
+| Category | Loại sữa | Đá Nước Dừa | Kem Matcha | Thêm bột matcha |
+|---|---|---|---|---|
+| `daily` | ✅ | ✅ | ✅ | ✅ |
+| `recipe` | ❌ | ✅ | ✅ | ✅ |
+| `seasonal` | ✅ | ✅ | ✅ | ❌ |
+
+Admin can override per-item via a toggle list in `MenuItemForm.tsx` — shows all available addon groups with on/off toggle. Admin can add or remove any addon including category defaults. No distinction shown between "default" and "manually added".
+
+Category defaults are defined in `lib/menuDefaults.ts` using addon group UUIDs.
+
 ### Daily item create/edit flow (`MenuItemForm.tsx`)
 
 When category = `daily`:

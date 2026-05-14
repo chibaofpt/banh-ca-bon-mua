@@ -20,8 +20,8 @@ model User {
   created_at       DateTime    @default(now()) @db.Timestamptz(6)
   updated_at       DateTime    @default(now()) @updatedAt @db.Timestamptz(6)
   orders           Order[]
-  performed_logs   PointsLog[] @relation("StaffPerformed")
-  points_logs      PointsLog[] @relation("UserPoints")
+  performedLogs    PointsLog[] @relation("StaffPerformed")
+  pointsLogs       PointsLog[] @relation("UserPoints")
   sessions         Session[]
   redeemedVouchers Voucher[]   @relation("StaffRedeemed")
   vouchers         Voucher[]   @relation("UserVouchers")
@@ -67,7 +67,7 @@ model VoucherPackage {
   is_active          Boolean       @default(true)
   expires_after_days Int?
   created_at         DateTime      @default(now()) @db.Timestamptz(6)
-  menu_item          MenuItem?     @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  menuItem           MenuItem?     @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   vouchers           Voucher[]
 
   @@map("voucher_packages")
@@ -88,10 +88,10 @@ model Voucher {
   redeemed_at    DateTime?      @db.Timestamptz(6)
   redeemed_by    String?        @db.Uuid
   created_at     DateTime       @default(now()) @db.Timestamptz(6)
-  order_items    OrderItem[]
+  orderItems     OrderItem[]
   orders         Order[]
-  points_logs    PointsLog[]
-  menu_item      MenuItem?      @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pointsLogs     PointsLog[]
+  menuItem       MenuItem?      @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   package        VoucherPackage @relation(fields: [package_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   staff          User?          @relation("StaffRedeemed", fields: [redeemed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
   user           User           @relation("UserVouchers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -114,8 +114,8 @@ model PointsLog {
   created_at      DateTime    @default(now()) @db.Timestamptz(6)
   order           Order?      @relation(fields: [order_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   staff           User?       @relation("StaffPerformed", fields: [performed_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  reversed_log    PointsLog?  @relation("Reversal", fields: [reversed_log_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  reversal_logs   PointsLog[] @relation("Reversal")
+  reversedLog     PointsLog?  @relation("Reversal", fields: [reversed_log_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  reversalLogs    PointsLog[] @relation("Reversal")
   user            User        @relation("UserPoints", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   voucher         Voucher?    @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
@@ -138,20 +138,29 @@ model Promotion {
 }
 
 model MenuItem {
-  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name             String
-  description      String?
-  price_vnd        Int?                           // null for daily items; non-null for seasonal/recipe
-  category         String
-  image_url        String?
-  is_available     Boolean          @default(true)
-  sort_order       Int              @default(0)
-  created_at       DateTime         @default(now()) @db.Timestamptz(6)
-  addon_groups     MenuItemAddon[]
-  sizes            MenuItemSize[]
-  order_items      OrderItem[]
-  voucher_packages VoucherPackage[]
-  vouchers         Voucher[]
+  id                   String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                 String
+  description          String?
+  category             String
+  image_url            String?
+  is_available         Boolean               @default(true)
+  sort_order           Int                   @default(0)
+  created_at           DateTime              @default(now()) @db.Timestamptz(6)
+  is_seasonal          Boolean               @default(false)
+  matcha_powder_id     String?               @db.Uuid
+  default_powder_id    String?               @db.Uuid
+  custom_powder_grams  Json?
+  base_liquid_note     String?
+  updated_at           DateTime              @default(now()) @db.Timestamptz(6)
+  fusionAllowedPowders FusionAllowedPowder[]
+  /// Powder that references this Latte item as its pricing anchor
+  referenceLatteItem   MatchaPowder?         @relation("MatchaPowder_referenceLatteItem")
+  sizes                MenuItemSize[]
+  defaultPowder        MatchaPowder?         @relation("MenuItem_defaultPowder", fields: [default_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  matchaPowder         MatchaPowder?         @relation("MenuItem_matchaPowder", fields: [matcha_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  orderItems           OrderItem[]
+  voucherPackages      VoucherPackage[]
+  vouchers             Voucher[]
 
   @@index([category], map: "idx_menu_items_category")
   @@index([is_available], map: "idx_menu_items_is_available")
@@ -159,49 +168,42 @@ model MenuItem {
 }
 
 model AddonGroup {
-  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id           String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name         String
   description  String?
   type         AddonType
   is_required  Boolean
   min_quantity Int?
   max_quantity Int?
-  created_at   DateTime        @default(now()) @db.Timestamptz(6)
+  created_at   DateTime      @default(now()) @db.Timestamptz(6)
+  is_active    Boolean       @default(true)
   options      AddonOption[]
-  menu_items   MenuItemAddon[]
 
   @@map("addon_groups")
 }
 
 model AddonOption {
-  id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  addon_group_id    String           @db.Uuid
-  label             String
-  price_vnd         Int              @default(0)
-  is_default        Boolean          @default(false)
-  sort_order        Int              @default(0)
-  group             AddonGroup       @relation(fields: [addon_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  order_item_addons OrderItemAddon[]
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  addon_group_id String           @db.Uuid
+  label          String
+  price_vnd      Int              @default(0)
+  is_default     Boolean          @default(false)
+  sort_order     Int              @default(0)
+  /// gram amount for extra matcha options; null for all other addon types
+  gram_value     Decimal?         @db.Decimal
+  group          AddonGroup       @relation(fields: [addon_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  orderItemAddons OrderItemAddon[]
 
   @@map("addon_options")
 }
 
-model MenuItemAddon {
-  menu_item_id   String     @db.Uuid
-  addon_group_id String     @db.Uuid
-  addon_group    AddonGroup @relation(fields: [addon_group_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  menu_item      MenuItem   @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@id([menu_item_id, addon_group_id])
-  @@map("menu_item_addons")
-}
-
 model MenuItemSize {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  menu_item_id String   @db.Uuid
-  size         Size
-  price_vnd    Int
-  menu_item    MenuItem @relation(fields: [menu_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  menu_item_id   String   @db.Uuid
+  size           Size
+  /// null = this size is not sold; hidden from UI entirely
+  base_price_vnd Int?
+  menuItem       MenuItem @relation(fields: [menu_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([menu_item_id, size])
   @@index([menu_item_id], map: "idx_menu_item_sizes_menu_item_id")
@@ -223,7 +225,7 @@ model Order {
   items         OrderItem[]
   user          User        @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   voucher       Voucher?    @relation(fields: [voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  points_logs   PointsLog[]
+  pointsLogs    PointsLog[]
 
   @@index([created_at(sort: Desc)], map: "idx_orders_created_at")
   @@index([status], map: "idx_orders_status")
@@ -232,20 +234,26 @@ model Order {
 }
 
 model OrderItem {
-  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  order_id           String           @db.Uuid
-  menu_item_id       String           @db.Uuid
-  quantity           Int
-  unit_price_vnd     Int
-  addons_price_vnd   Int              @default(0)
-  product_voucher_id String?          @db.Uuid
-  note               String?
-  size               Size?                          // required for daily items, null for seasonal/recipe
-  sweetness          SweetnessLevel   @default(QUARTER)
-  addons             OrderItemAddon[]
-  menu_item          MenuItem         @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  order              Order            @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  product_voucher    Voucher?         @relation(fields: [product_voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                    String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  order_id              String           @db.Uuid
+  menu_item_id          String           @db.Uuid
+  quantity              Int
+  unit_price_vnd        Int
+  addons_price_vnd      Int              @default(0)
+  product_voucher_id    String?          @db.Uuid
+  note                  String?
+  sweetness             SweetnessLevel   @default(QUARTER)
+  size                  Size
+  selected_powder_id    String?          @db.Uuid
+  selected_milk_type_id String?          @db.Uuid
+  ice_option            IceOption        @default(NORMAL)
+  coldwhisk             Boolean          @default(false)
+  addons                OrderItemAddon[]
+  menuItem              MenuItem         @relation(fields: [menu_item_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  order                 Order            @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  productVoucher        Voucher?         @relation(fields: [product_voucher_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  milkType              MilkType?        @relation(fields: [selected_milk_type_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  selectedPowder        MatchaPowder?    @relation(fields: [selected_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([order_id], map: "idx_order_items_order_id")
   @@map("order_items")
@@ -257,11 +265,85 @@ model OrderItemAddon {
   addon_option_id String      @db.Uuid
   quantity        Int
   unit_price_vnd  Int
-  addon_option    AddonOption @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  order_item      OrderItem   @relation(fields: [order_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  addonOption     AddonOption @relation(fields: [addon_option_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  orderItem       OrderItem   @relation(fields: [order_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@map("order_item_addons")
 }
+
+// ── New Phase 2 models ────────────────────────────────────────────────────────
+
+model MatchaPowder {
+  id                      String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                    String
+  manufacturer            String?
+  description             String?
+  price_per_gram          Int
+  type                    PowderType            @default(NONE)
+  /// FK → menu_items; SET NULL on soft-delete. Used as Premium_Latte pricing anchor.
+  reference_latte_item_id String?               @unique @db.Uuid
+  fragrance               Int?
+  body                    Int?
+  bitterness              Int?
+  umami                   Int?
+  color                   Int?
+  is_available            Boolean               @default(true)
+  created_at              DateTime              @default(now()) @db.Timestamptz(6)
+  fusionAllowedPowders    FusionAllowedPowder[]
+  referenceLatteItem      MenuItem?             @relation("MatchaPowder_referenceLatteItem", fields: [reference_latte_item_id], references: [id], onUpdate: NoAction)
+  defaultPowderItems      MenuItem[]            @relation("MenuItem_defaultPowder")
+  matchaPowderItems       MenuItem[]            @relation("MenuItem_matchaPowder")
+  orderItems              OrderItem[]
+  powderSizeConfigs       PowderSizeConfig[]
+
+  @@map("matcha_powder")
+}
+
+model MilkType {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name          String
+  price_per_ml  Int
+  is_default    Boolean     @default(false)
+  is_active     Boolean     @default(true)
+  display_order Int         @default(0)
+  created_at    DateTime    @default(now()) @db.Timestamptz(6)
+  orderItems    OrderItem[]
+
+  @@map("milk_type")
+}
+
+/// System-wide size fallback. Always exactly 3 rows (M, L, XL). Admin-editable.
+model DefaultSizeConfig {
+  size        Size    @id
+  milk_ml     Int
+  powder_gram Decimal @db.Decimal
+
+  @@map("default_size_config")
+}
+
+/// Per-powder gram exceptions. Only powders that differ from default_size_config have rows here.
+model PowderSizeConfig {
+  powder_id    String       @db.Uuid
+  size         Size
+  grams        Decimal      @db.Decimal
+  matchaPowder MatchaPowder @relation(fields: [powder_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([powder_id, size])
+  @@map("powder_size_config")
+}
+
+/// Which powders can be swapped on a Fusion item. Empty = only default powder, swap UI hidden.
+model FusionAllowedPowder {
+  menu_item_id String       @db.Uuid
+  powder_id    String       @db.Uuid
+  menuItem     MenuItem     @relation(fields: [menu_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  matchaPowder MatchaPowder @relation(fields: [powder_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([menu_item_id, powder_id])
+  @@map("fusion_allowed_powder")
+}
+
+// ── Enums ─────────────────────────────────────────────────────────────────────
 
 enum Role {
   CUSTOMER
@@ -316,4 +398,18 @@ enum Size {
   M
   L
   XL
+}
+
+enum IceOption {
+  NORMAL
+  LESS_ICE
+  NO_ICE
+  SEPARATE_ICE
+}
+
+enum PowderType {
+  RECOMMEND
+  NEW
+  SEASONAL
+  NONE
 }

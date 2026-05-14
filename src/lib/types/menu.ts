@@ -1,3 +1,8 @@
+/** All menu categories — exactly 2 in Phase 2. */
+export type Category = "latte" | "fusion";
+
+export type Size = "M" | "L" | "XL";
+
 export type SweetnessLevel =
   | "NONE"
   | "QUARTER"
@@ -5,17 +10,15 @@ export type SweetnessLevel =
   | "THREE_QUARTER"
   | "FULL";
 
-export type Size = "M" | "L" | "XL";
-
-export interface MenuItemSize {
-  size: "M" | "L" | "XL";
-  price_vnd: number;
-}
+// ── Addon types ────────────────────────────────────────────────────────────────
 
 export interface AddonOption {
   id: string;
   label: string;
+  /** Always 0 for extra matcha — actual price = gram_value × selected_powder.price_per_gram */
   price_vnd: number;
+  /** gram amount for extra matcha options; null for all other addon types */
+  gram_value: number | null;
   is_default: boolean;
   sort_order: number;
 }
@@ -30,21 +33,77 @@ export interface AddonGroup {
   options: AddonOption[];
 }
 
+// ── Milk ───────────────────────────────────────────────────────────────────────
+
+/** Milk option attached to Latte items only. */
+export interface MilkTypeOption {
+  id: string;
+  name: string;
+  price_per_ml: number;
+  is_default: boolean;
+  display_order: number;
+}
+
+// ── Powder (lightweight — for menu response only) ──────────────────────────────
+
+export interface MenuItemPowder {
+  id: string;
+  name: string;
+  type: "RECOMMEND" | "NEW" | "SEASONAL" | "NONE";
+}
+
+// ── Size ───────────────────────────────────────────────────────────────────────
+
+export interface MenuItemSize {
+  size: Size;
+  /** Runtime base price (not final). Final price computed by pricing.ts. */
+  base_price_vnd: number;
+  /** ml of default milk for this size — from default_size_config. Used for milk swap recalculation. */
+  milk_ml: number;
+}
+
+// ── MenuItem ───────────────────────────────────────────────────────────────────
+
 export interface MenuItem {
   id: string;
   name: string;
   description: string | null;
-  category: "daily" | "seasonal" | "recipe";
-  /** Null for daily items — use sizes instead. Non-null for seasonal/recipe. */
-  price_vnd: number | null;
+  category: Category;
+  is_seasonal: boolean;
   image_url: string | null;
   sort_order: number;
-  /** Non-empty only for daily items (always M, L, XL); empty array for seasonal/recipe. */
+
+  /** Fusion only — display text for base liquid (e.g. "Nước ép cam"). */
+  base_liquid_note: string | null;
+
+  custom_powder_grams: {
+    M?: number;
+    L?: number;
+    XL?: number;
+  } | null;
+
+  /** Latte only — the fixed powder for this item. */
+  powder: MenuItemPowder | null;
+
+  /** Fusion only — server-resolved default powder id; never null in API response. */
+  resolved_default_powder_id: string | null;
+
+  /** Fusion only — powder ids that can be swapped. Empty = swap UI hidden. */
+  allowed_powder_ids: string[];
+
+  /** Latte only — all active milk types. Empty for Fusion. */
+  milk_types: MilkTypeOption[];
+
+  /** Sizes with base_price_vnd != null only (null sizes are excluded entirely). */
   sizes: MenuItemSize[];
+
+  /** All active addon_groups — attached globally (no per-item junction). */
   addon_groups: AddonGroup[];
 }
 
-/** The complete menu structure returned by GET /api/menu, grouped by category. */
+/** The complete menu structure returned by GET /api/menu. */
 export interface MenuData {
-  [category: string]: MenuItem[];
+  updated_at: string;
+  latte: MenuItem[];
+  fusion: MenuItem[];
 }

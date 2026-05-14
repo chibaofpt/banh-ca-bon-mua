@@ -8,6 +8,7 @@
 
 - Success: `{ data: T }`
 - Error: `{ error: string, code: string }`
+- Error with payload: `{ error: string, code: string, details: {...} }` — used by `PRICE_CHANGED`
 
 ---
 
@@ -19,7 +20,8 @@
 | `UNAUTHORIZED` | No valid session / token expired |
 | `FORBIDDEN` | Authenticated but insufficient role |
 | `NOT_FOUND` | Resource does not exist |
-| `CONFLICT` | Unique constraint or state conflict (e.g. phone already registered) |
+| `CONFLICT` | Unique constraint or state conflict |
+| `PRICE_CHANGED` | One or more item prices differ between client submission and server recompute |
 | `INSUFFICIENT_POINTS` | Not enough points for voucher redemption |
 | `VOUCHER_EXPIRED` | Voucher past expiry date |
 | `VOUCHER_REDEEMED` | Voucher already used |
@@ -85,7 +87,6 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 - Bucket: `menu-images` (public bucket)
 - Size limit: 5MB
 - Allowed types: `image/jpeg`, `image/png`, `image/webp`
-- Returns public URL → stored as `menu_items.image_url`
 - Old image is NOT deleted on replace — deferred cleanup
 
 ---
@@ -100,7 +101,8 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 | `/api/auth/login` | POST | Login, issue tokens |
 | `/api/auth/logout` | POST | Delete session, clear cookies |
 | `/api/auth/refresh` | POST | Swap refresh token → new access token |
-| `/api/menu` | GET | All available items + addons grouped by category |
+| `/api/menu` | GET | All available items with computed prices |
+| `/api/powders` | GET | Full powder catalogue with pricing and size config |
 
 ### Customer — CUSTOMER role
 
@@ -108,7 +110,7 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 |---|---|---|
 | `/api/orders` | POST | Create order from cart |
 | `/api/orders` | GET | List own orders (newest first, limit 20) |
-| `/api/orders/[id]` | GET | Own order detail (verify ownership) |
+| `/api/orders/[id]` | GET | Own order detail |
 | `/api/profile` | GET | Own profile info |
 | `/api/profile/points` | GET | Balance + last 20 log entries |
 | `/api/profile/vouchers` | GET | Own ACTIVE vouchers |
@@ -118,7 +120,7 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/staff/orders` | POST | Create order at counter (status = COMPLETED immediately) |
+| `/api/staff/orders` | POST | Create order at counter (COMPLETED immediately) |
 | `/api/staff/scan` | GET | Resolve QR token → user or voucher |
 | `/api/staff/vouchers/[id]/redeem` | PATCH | Mark voucher REDEEMED offline |
 | `/api/staff/users` | GET | Lookup customer by phone number |
@@ -127,24 +129,34 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/admin/points/add` | POST | Manually add points to customer (max 100) |
-| `/api/admin/orders/[id]/status` | PATCH | Update order status (any valid transition) |
+| `/api/admin/points/add` | POST | Manually add points (max 100) |
+| `/api/admin/orders/[id]/status` | PATCH | Update order status |
 | `/api/admin/menu` | GET | All items including unavailable |
-| `/api/admin/menu` | POST | Create menu item with image upload |
+| `/api/admin/menu` | POST | Create menu item |
 | `/api/admin/menu/[id]` | PUT | Update menu item |
-| `/api/admin/menu/[id]` | DELETE | Soft delete — sets `is_available = false` |
-| `/api/admin/addon-groups` | GET | List all addon groups with their options |
+| `/api/admin/menu/[id]` | DELETE | Soft delete (`is_available = false`) |
+| `/api/admin/addon-groups` | GET | List all addon groups |
 | `/api/admin/addon-groups` | POST | Create addon group |
 | `/api/admin/addon-groups/[id]` | PUT | Update addon group |
-| `/api/admin/addon-groups/[id]` | DELETE | Delete addon group |
-| `/api/admin/menu-item-addons` | POST | Attach addon group to menu item |
-| `/api/admin/menu-item-addons` | DELETE | Detach addon group from menu item |
+| `/api/admin/addon-groups/[id]` | DELETE | Soft delete (`is_active = false`) |
 | `/api/admin/voucher-packages` | GET | List all voucher packages |
 | `/api/admin/voucher-packages` | POST | Create voucher package |
 | `/api/admin/voucher-packages/[id]` | PUT | Update voucher package |
-| `/api/admin/voucher-packages/[id]` | DELETE | Deactivate voucher package |
+| `/api/admin/voucher-packages/[id]` | DELETE | Deactivate (`is_active = false`) |
 | `/api/admin/points-log` | GET | All manual adjustment logs |
 | `/api/admin/points-log/[id]/reverse` | POST | Reverse a manual points entry |
+| `/api/admin/matcha-powders` | GET | List all powders |
+| `/api/admin/matcha-powders` | POST | Create powder |
+| `/api/admin/matcha-powders/[id]` | PUT | Update powder |
+| `/api/admin/matcha-powders/[id]` | DELETE | Soft delete (`is_available = false`) |
+| `/api/admin/milk-types` | GET | List all milk types |
+| `/api/admin/milk-types` | POST | Create milk type |
+| `/api/admin/milk-types/[id]` | PUT | Update milk type |
+| `/api/admin/milk-types/[id]` | DELETE | Deactivate (`is_active = false`) |
+| `/api/admin/default-size-config` | GET | Get M/L/XL system config |
+| `/api/admin/default-size-config` | PUT | Update M/L/XL config (affects all prices immediately) |
+| `/api/admin/fusion-powders` | POST | Attach powder to Fusion item's allowed list |
+| `/api/admin/fusion-powders` | DELETE | Detach powder from Fusion item's allowed list |
 | `/api/admin/promotions` | POST/PUT/DELETE | Phase 5 only |
 
 ---
@@ -153,166 +165,264 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 
 ### `POST /api/auth/register`
 ```ts
-// Request
 { phone_number: string, password: string, name: string }
+// If phone exists with password_hash = "GHOST_USER_NO_PASSWORD" → UPDATE instead of INSERT
+```
 
-// Special case: if phone exists with password_hash = "GHOST_USER_NO_PASSWORD"
-// → UPDATE existing row (password_hash, name, updated_at) instead of INSERT
-// → Returns same user with updated fields
+### `GET /api/powders`
+```ts
+{
+  data: {
+    id: string
+    name: string
+    manufacturer: string | null
+    description: string | null
+    price_per_gram: number
+    type: "RECOMMEND" | "NEW" | "SEASONAL" | "NONE"
+    fragrance: number | null
+    body: number | null
+    bitterness: number | null
+    umami: number | null
+    color: number | null
+    is_available: boolean
+    size_config: {                // powder_size_config — COALESCE level 2
+      size: "M" | "L" | "XL"
+      grams: number
+    }[]
+  }[]
+  // COALESCE level 3 fallback — system-wide, same for all powders without size_config
+  default_powder_gram: {
+    size: "M" | "L" | "XL"
+    grams: number
+  }[]
+}
 ```
 
 ### `GET /api/menu`
 ```ts
-// Response
 {
   data: {
-    [category: string]: {
-      id: string
-      name: string
-      description: string | null
-      price_vnd: number | null     // null for daily items — use sizes instead
-      image_url: string | null
-      sort_order: number
-      sizes: {                     // present and always 3 entries for daily items; empty array for seasonal/recipe
-        size: "M" | "L" | "XL"
-        price_vnd: number
-      }[]
-      addon_groups: {
-        id: string
-        name: string
-        type: "SELECTOR" | "TOGGLE" | "QUANTITY"
-        is_required: boolean
-        min_quantity: number | null
-        max_quantity: number | null
-        options: {
-          id: string
-          label: string
-          price_vnd: number
-          is_default: boolean
-          sort_order: number
-        }[]
-      }[]
-    }[]
+    updated_at: string              // MAX(menu_items.updated_at) — ISO timestamp for cache invalidation
+    latte: MenuItem[]
+    fusion: MenuItem[]
   }
+}
+
+// MenuItem
+{
+  id: string
+  name: string
+  description: string | null
+  category: "latte" | "fusion"
+  is_seasonal: boolean
+  image_url: string | null
+  sort_order: number
+  base_liquid_note: string | null   // Fusion only
+
+  // Latte only
+  powder: {
+    id: string
+    name: string
+    type: "RECOMMEND" | "NEW" | "SEASONAL" | "NONE"
+  } | null
+
+  // Fusion only
+  resolved_default_powder_id: string   // never null — server resolves fallback
+  allowed_powder_ids: string[]         // fusion_allowed_powder WHERE is_available=true; empty = swap locked
+
+  // Latte only
+  milk_types: {
+    id: string
+    name: string
+    price_per_ml: number
+    is_default: boolean
+    display_order: number
+  }[]
+
+  sizes: {
+    size: "M" | "L" | "XL"
+    base_price_vnd: number            // null sizes excluded entirely
+    milk_ml: number                   // from default_size_config — frontend uses for milk swap recalculation
+  }[]
+
+  // All items — addon_groups WHERE is_active = true
+  addon_groups: {
+    id: string
+    name: string
+    type: "SELECTOR" | "TOGGLE" | "QUANTITY"
+    is_required: boolean
+    min_quantity: number | null
+    max_quantity: number | null
+    options: {
+      id: string
+      label: string
+      price_vnd: number               // extra matcha: 0 — actual price = gram_value × powder.price_per_gram
+      gram_value: number | null       // extra matcha only: gram amount (0, 1, 2, 3, 4). null for others.
+      is_default: boolean
+      sort_order: number
+    }[]
+  }[]
+}
+```
+
+### `GET /api/admin/menu`
+Same shape as `GET /api/menu` but:
+- Includes items with `is_available = false`
+- Includes `default_powder_id` (raw, may be null) alongside `resolved_default_powder_id`
+- Includes all 3 size rows including those with `base_price_vnd = null`
+- `updated_at` is still `MAX(menu_items.updated_at)` across all items including unavailable
+
+### `POST /api/admin/menu`
+```ts
+// multipart/form-data
+{
+  name: string
+  description?: string
+  category: "latte" | "fusion"
+  is_seasonal?: boolean
+  image?: File
+  sort_order?: number
+  matcha_powder_id?: string           // Latte only
+  default_powder_id?: string          // Fusion only
+  base_liquid_note?: string           // Fusion only
+  custom_powder_grams?: { M?: number, L?: number, XL?: number }
+  sizes: {
+    size: "M" | "L" | "XL"
+    base_price_vnd: number | null
+  }[]
+}
+// Server: INSERT menu_items + 3 menu_item_sizes in prisma.$transaction()
+// Addons apply globally — no junction rows needed
+```
+
+### `PUT /api/admin/menu/[id]`
+```ts
+// multipart/form-data, all fields optional
+{
+  name?: string
+  description?: string
+  is_seasonal?: boolean
+  is_available?: boolean
+  image?: File
+  sort_order?: number
+  matcha_powder_id?: string
+  default_powder_id?: string
+  base_liquid_note?: string
+  custom_powder_grams?: { M?: number, L?: number, XL?: number } | null
+  sizes?: {
+    size: "M" | "L" | "XL"
+    base_price_vnd: number | null
+  }[]                                 // upsert on (menu_item_id, size)
 }
 ```
 
 ### `POST /api/orders` — Customer
 ```ts
-// Request
 {
   items: {
     menu_item_id: string
     quantity: number
-    size?: "M" | "L" | "XL"        // required for daily items, omitted for seasonal/recipe
+    size: "M" | "L" | "XL"
     sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL"
+    ice_option?: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE"
+    coldwhisk?: boolean
     note?: string
     addon_option_ids: { option_id: string, quantity: number }[]
-    product_voucher_id?: string   // PRODUCT voucher applied to this line
+    product_voucher_id?: string
+    selected_powder_id?: string       // Fusion only
+    selected_milk_type_id?: string    // Latte only, optional (defaults to sữa bò)
+    client_price_vnd: number          // REQUIRED — frontend computed price. Missing = VALIDATION_ERROR.
   }[]
-  voucher_id?: string             // DISCOUNT voucher at order level
-  pickup_time?: string            // freeform datetime string
+  voucher_id?: string
+  pickup_time?: string
   note?: string
 }
 ```
 
-### `POST /api/staff/orders` — Staff counter order
+### `POST /api/staff/orders` — Staff
 ```ts
-// Request
 {
-  phone_number: string            // normalized to +84 by server
-  customer_name?: string          // required only if phone not found (ghost user creation)
+  phone_number: string
+  customer_name?: string
   items: {
     menu_item_id: string
     quantity: number
-    size?: "M" | "L" | "XL"      // required for daily items, omitted for seasonal/recipe
+    size: "M" | "L" | "XL"
     sweetness: "NONE" | "QUARTER" | "HALF" | "THREE_QUARTER" | "FULL"
-    note?: string                 // custom instructions (e.g. "ít đá")
+    ice_option?: "NORMAL" | "LESS_ICE" | "NO_ICE" | "SEPARATE_ICE"
+    coldwhisk?: boolean
+    note?: string
     addon_option_ids: { option_id: string, quantity: number }[]
     product_voucher_id?: string
+    selected_powder_id?: string
+    selected_milk_type_id?: string
+    client_price_vnd: number          // REQUIRED
   }[]
   voucher_id?: string
 }
-// pickup_time: not collected — staff counter orders are immediate
-// Status: set to COMPLETED immediately, points awarded at creation
+```
+
+### `PRICE_CHANGED` error response
+```ts
+// Note: uses `details` key, not `data` — consistent with error shape
+{
+  error: "One or more item prices have changed. Please review and resubmit.",
+  code: "PRICE_CHANGED",
+  details: {
+    conflicts: {
+      menu_item_id: string
+      name: string
+      size: "M" | "L" | "XL"
+      client_price_vnd: number
+      server_price_vnd: number
+    }[]
+  }
+}
+```
+
+### `POST /api/admin/fusion-powders`
+```ts
+{ menu_item_id: string, powder_id: string }
+```
+
+### `DELETE /api/admin/fusion-powders`
+```ts
+{ menu_item_id: string, powder_id: string }
+```
+
+### `GET /api/admin/default-size-config`
+```ts
+{ data: { size: "M" | "L" | "XL", milk_ml: number, powder_gram: number }[] }
+```
+
+### `PUT /api/admin/default-size-config`
+```ts
+{ sizes: { size: "M" | "L" | "XL", milk_ml?: number, powder_gram?: number }[] }
 ```
 
 ### `POST /api/profile/vouchers/redeem`
 ```ts
-// Request
 { package_id: string }
 ```
+
 ### `GET /api/staff/users?phone=xxx`
-​```ts
-// Query param
-// phone: string — normalized to +84 by server before lookup
-
-// Response — found
-{
-  data: {
-    found: true
-    name: string
-    phone_number: string
-  }
-}
-
-// Response — not found
-{
-  data: {
-    found: false
-  }
-}
-​```
+```ts
+{ data: { found: true, name: string, phone_number: string } }
+{ data: { found: false } }
+```
 
 ### `GET /api/staff/scan?token=xxx`
 ```ts
-// Response — user
-{
-  data: {
-    type: "user"
-    data: {
-      id: string          // users.qr_token (NOT users.id)
-      name: string
-      phone_number: string
-      points_balance: number
-    }
-  }
-}
+// user
+{ data: { type: "user", data: { id: string, name: string, phone_number: string, points_balance: number } } }
 
-// Response — voucher
-{
-  data: {
-    type: "voucher"
-    data: {
-      id: string          // vouchers.qr_token (NOT vouchers.id)
-      voucher_type: "DISCOUNT" | "PRODUCT"
-      discount_type: "PERCENT" | "FIXED" | null
-      discount_value: number | null
-      menu_item_id: string | null
-      status: "ACTIVE" | "REDEEMED" | "EXPIRED"
-      expires_at: string | null
-    }
-  }
-}
+// voucher
+{ data: { type: "voucher", data: { id: string, voucher_type: "DISCOUNT" | "PRODUCT", discount_type: "PERCENT" | "FIXED" | null, discount_value: number | null, menu_item_id: string | null, status: "ACTIVE" | "REDEEMED" | "EXPIRED", expires_at: string | null } } }
 ```
 
 ### `PATCH /api/admin/orders/[id]/status`
 ```ts
-// Request
 { status: "PENDING" | "CONFIRMED" | "READY" | "COMPLETED" | "CANCELLED" }
-// All transitions permitted — admin is responsible for valid sequencing
-```
-
-### `POST /api/admin/menu-item-addons`
-```ts
-// Request
-{ menu_item_id: string, addon_group_id: string }
-```
-
-### `DELETE /api/admin/menu-item-addons`
-```ts
-// Request
-{ menu_item_id: string, addon_group_id: string }
 ```
 
 ---
@@ -320,39 +430,42 @@ Applied to: `GET /api/orders`, `GET /api/admin/points-log`
 ## Business Logic Notes
 
 ### Menu
-- `GET /api/admin/menu` returns all items including `is_available = false`, with `sizes` array (same shape as public menu — 3 entries for `daily`, empty for others)
-- `POST /api/admin/menu` for `daily` items: body must include `sizes: { size, price_vnd }[]` with all 3 of M/L/XL. Created in a single `prisma.$transaction()`.
-- `PUT /api/admin/menu/[id]` for `daily` items: body may include `sizes` array to update individual size prices. Each entry is an upsert on `(menu_item_id, size)`.
-- `price_vnd` is omitted (or null) in create/update body for `daily` items — server ignores it. Required (non-null integer) for `seasonal`/`recipe`.
-- Phone normalized to `+84` before storage: `"0912345678"` → `"+84912345678"`
-- Timing-safe: always run bcrypt compare even if user not found (prevents phone enumeration)
-- Ghost user register: check `password_hash = "GHOST_USER_NO_PASSWORD"` before insert
+- `GET /api/menu`: query `menu_items WHERE is_available = true`, sizes `WHERE base_price_vnd IS NOT NULL`, `addon_groups WHERE is_active = true` (no junction join), `milk_types WHERE is_active = true` (attached only if `category = "latte"`).
+- `updated_at` in response = `MAX(menu_items.updated_at)` across all items including unavailable ones.
+- Fusion `default_powder_id = NULL`: resolve fallback (Meyumi → Hana → MH-3 → cheapest `price_per_gram` WHERE `is_available = true`). Return `resolved_default_powder_id` — never NULL.
+- `allowed_powder_ids`: join `fusion_allowed_powder` + filter `matcha_powder.is_available = true`.
+- `POST /api/admin/menu`: INSERT `menu_items` + 3 `menu_item_sizes` in one `prisma.$transaction()`. No other writes needed.
+- `DELETE /api/admin/addon-groups/[id]`: set `is_active = false`. Never hard delete.
+- Admin soft-deleting a Latte item: check `matcha_powder.reference_latte_item_id` and warn if any powder references it.
+
+### Pricing (Server)
+- Pricing in `lib/pricing.ts` → delegates pure logic to `src/utils/pricing.ts`.
+- Preload all pricing data (sizes, powder configs, milk types, `default_size_config`) in a single fetch before looping items — avoid N+1.
+- Fusion Premium_Latte: preload all referenced Latte item sizes upfront.
+- Extra matcha `unit_price_vnd` = `addon_option.gram_value × selected_powder.price_per_gram`. Snapshot into `order_item_addons.unit_price_vnd`.
+- `PRICE_CHANGED`: compare `client_price_vnd` per item against server-computed price. Any mismatch → reject entire order, return `details.conflicts[]`.
 
 ### Orders
-- All order creation: validate + re-fetch prices from DB in `prisma.$transaction()`
-- For `daily` items: `size` is required — resolve `unit_price_vnd` from `menu_item_sizes` where `(menu_item_id, size)` matches. Validation error if size missing or not found.
-- For `seasonal`/`recipe` items: `size` must be absent — resolve `unit_price_vnd` from `menu_items.price_vnd`.
-- Customer order (`POST /api/orders`): status default = `PENDING`
-- Staff order (`POST /api/staff/orders`): status = `COMPLETED` immediately, points awarded at creation
-- DISCOUNT voucher: `discount_vnd = subtotal_vnd × percent / 100` or fixed amount. If `discount_vnd > subtotal_vnd` → `total_vnd = 0`, no error.
-- Points earned in same transaction as status → COMPLETED
+- Latte: server sets `selected_powder_id` from `menu_item.matcha_powder_id` — client must not send it.
+- Fusion: server validates `selected_powder_id` is either `resolved_default_powder_id` OR exists in `fusion_allowed_powder` for that item. Default powder is always accepted.
+- If `selected_milk_type_id` not sent for Latte → server uses `milk_type WHERE is_default = true` (sữa bò).
+- DISCOUNT voucher: if `discount_vnd > subtotal` → `total_vnd = 0`, no error.
+- Staff counter order: status = COMPLETED immediately, points awarded at creation.
 
 ### Vouchers
-- Expiry checked at scan (staff) or apply (customer) time — no background job
-- DISCOUNT online: set `orders.voucher_id`, calculate `discount_vnd`
-- PRODUCT online: add `order_item` with `unit_price_vnd = 0`, set `product_voucher_id`. Addons still charged.
+- PRODUCT online: `order_item` with `unit_price_vnd = 0`. Addons still charged.
 - PRODUCT/DISCOUNT offline: mark REDEEMED + `used_channel = OFFLINE`. No order created.
 
 ### Points
-- Earn: `floor(total_vnd / 10000)` on COMPLETED
-- Spend: deduct + create voucher in `prisma.$transaction()`
-- Manual add: ADMIN only, max 100/action, `performed_by` = admin user id
-- Reversal: insert new row — negative delta, `reason = "reversed_by_admin"`, `reversed_log_id` = original row id
+- Earn: `floor(total_vnd / 10000)` on COMPLETED.
+- Spend: deduct + create voucher in `prisma.$transaction()`.
+- Manual add: ADMIN only, max 100/action.
+- Reversal: insert new negative-delta row, `reason = "reversed_by_admin"`.
 
 ### QR Scan
-1. Check `users` table by `qr_token` first
-2. If not found, check `vouchers` table
-3. Never return internal `id` — always return `qr_token` as identifier
+1. Check `users` by `qr_token` first.
+2. If not found, check `vouchers`.
+3. Never return internal `id` — always `qr_token`.
 
 ### `points_log.reason` Valid Values
 | Value | Trigger |

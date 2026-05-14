@@ -1,82 +1,159 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import type { MenuData, MenuItem, MenuItemSize, MilkTypeOption, AddonGroup, AddonOption, MenuItemPowder } from "@/src/lib/types/menu";
 
-/** GET /api/menu — public, no auth required */
-export async function GET() {
+/** GET /api/menu — public, no auth required. */
+export async function GET(): Promise<NextResponse> {
   try {
-    const items = await prisma.menuItem.findMany({
-      where: { is_available: true },
-      orderBy: { sort_order: "asc" },
-      include: {
-        sizes: {
-          orderBy: { size: "asc" },
-        },
-        addon_groups: {
+    // ── Parallel data fetch ──────────────────────────────────────────────────
+    const [items, addonGroups, milkTypes, defaultSizeConfigs, powders] =
+      await Promise.all([
+        prisma.menuItem.findMany({
+          where: { is_available: true },
+          orderBy: { sort_order: "asc" },
           include: {
-            addon_group: {
+            sizes: true,
+            fusionAllowedPowders: {
               include: {
-                options: { orderBy: { sort_order: "asc" } },
+                matchaPowder: { select: { id: true, is_available: true } },
               },
             },
+            matchaPowder: {
+              select: { id: true, name: true, type: true },
+            },
           },
-        },
-      },
-    });
+        }),
+        prisma.addonGroup.findMany({
+          where: { is_active: true },
+          include: {
+            options: { orderBy: { sort_order: "asc" } },
+          },
+        }),
+        prisma.milkType.findMany({
+          where: { is_active: true },
+          orderBy: { display_order: "asc" },
+        }),
+        prisma.defaultSizeConfig.findMany(),
+        prisma.matchaPowder.findMany({
+          where: { is_available: true },
+          select: { id: true, name: true, type: true },
+        }),
+      ]);
 
-    // ── Group by category ──────────────────────────────────────────────────────
-    const grouped: Record<string, unknown[]> = {};
+    // ── Build lookups ────────────────────────────────────────────────────────
+    const milkMlMap: Record<string, number> = {};
+    for (const c of defaultSizeConfigs) {
+      milkMlMap[c.size] = c.milk_ml;
+    }
 
+    // Global addon groups shape (same for every item)
+    const globalAddonGroups: AddonGroup[] = addonGroups.map((g) => ({
+      id: g.id,
+      name: g.name,
+      type: g.type,
+      is_required: g.is_required,
+      min_quantity: g.min_quantity ?? null,
+      max_quantity: g.max_quantity ?? null,
+      options: g.options.map((o): AddonOption => ({
+        id: o.id,
+        label: o.label,
+        price_vnd: o.price_vnd,
+        gram_value: o.gram_value !== null ? Number(o.gram_value) : null,
+        is_default: o.is_default,
+        sort_order: o.sort_order,
+      })),
+    }));
+
+    // Resolve Fusion default powder fallback order: Meyumi → Hana → MH-3 → cheapest
+    const FALLBACK_NAMES = ["Meyumi", "Hana", "MH-3"];
+    function resolveFusionDefaultPowderId(
+      defaultPowderId: string | null
+    ): string | null {
+      if (defaultPowderId) return defaultPowderId;
+      for (const name of FALLBACK_NAMES) {
+        const found = powders.find((p) => p.name === name);
+        if (found) return found.id;
+      }
+      // cheapest available — powders already filtered is_available
+      return powders.length > 0 ? powders[0].id : null;
+    }
+
+    // ── Build response ───────────────────────────────────────────────────────
+    const latte: MenuItem[] = [];
+    const fusion: MenuItem[] = [];
+
+    let maxUpdatedAt = new Date(0);
     for (const item of items) {
-      const cat = item.category;
-      if (!grouped[cat]) grouped[cat] = [];
+      // updated_at tracking — MenuItem has updated_at
+      const updatedAt = (item as unknown as { updated_at: Date }).updated_at;
+      if (updatedAt > maxUpdatedAt) maxUpdatedAt = updatedAt;
 
-      grouped[cat].push({
+      // Sizes — exclude null base_price_vnd
+      const sizes: MenuItemSize[] = item.sizes
+        .filter((s) => s.base_price_vnd !== null)
+        .map((s) => ({
+          size: s.size,
+          base_price_vnd: s.base_price_vnd as number,
+          milk_ml: milkMlMap[s.size] ?? 0,
+        }));
+
+      const menuItem: MenuItem = {
         id: item.id,
         name: item.name,
         description: item.description ?? null,
-        price_vnd: item.price_vnd ?? null,
+        category: item.category as "latte" | "fusion",
+        is_seasonal: item.is_seasonal,
         image_url: item.image_url ?? null,
         sort_order: item.sort_order,
-        sizes: item.sizes.map((s) => ({
-          size: s.size,
-          price_vnd: s.price_vnd,
-        })),
-        addon_groups: item.addon_groups.map(({ addon_group: g }) => ({
-          id: g.id,
-          name: g.name,
-          type: g.type,
-          is_required: g.is_required,
-          min_quantity: g.min_quantity ?? null,
-          max_quantity: g.max_quantity ?? null,
-          options: g.options.map((o) => ({
-            id: o.id,
-            label: o.label,
-            price_vnd: o.price_vnd,
-            is_default: o.is_default,
-            sort_order: o.sort_order,
-          })),
-        })),
-      });
+        base_liquid_note: item.base_liquid_note ?? null,
+        custom_powder_grams: item.custom_powder_grams as MenuItem["custom_powder_grams"],
+        powder: null,
+        resolved_default_powder_id: null,
+        allowed_powder_ids: [],
+        milk_types: [],
+        sizes,
+        addon_groups: globalAddonGroups,
+      };
+
+      if (item.category === "latte") {
+        menuItem.powder = item.matchaPowder
+          ? ({
+              id: item.matchaPowder.id,
+              name: item.matchaPowder.name,
+              type: item.matchaPowder.type,
+            } as MenuItemPowder)
+          : null;
+        menuItem.milk_types = milkTypes.map((m): MilkTypeOption => ({
+          id: m.id,
+          name: m.name,
+          price_per_ml: m.price_per_ml,
+          is_default: m.is_default,
+          display_order: m.display_order,
+        }));
+        latte.push(menuItem);
+      } else {
+        menuItem.resolved_default_powder_id = resolveFusionDefaultPowderId(
+          item.default_powder_id
+        );
+        menuItem.allowed_powder_ids = item.fusionAllowedPowders
+          .filter((fp) => fp.matchaPowder.is_available)
+          .map((fp) => fp.powder_id);
+        fusion.push(menuItem);
+      }
     }
 
-    return NextResponse.json({ data: grouped });
-  } catch (error) {
-    console.error("[GET /api/menu] Database error, falling back to static JSON:", error);
+    const menuData: MenuData = {
+      updated_at: maxUpdatedAt.toISOString(),
+      latte,
+      fusion,
+    };
 
-    try {
-      const fs = await import("fs/promises");
-      const path = await import("path");
-      const filePath = path.join(process.cwd(), "public", "data", "menu.json");
-      const fileContent = await fs.readFile(filePath, "utf-8");
-      const staticData = JSON.parse(fileContent) as Record<string, unknown>;
-
-      return NextResponse.json({ data: staticData });
-    } catch (fallbackError) {
-      console.error("[GET /api/menu] Fallback error:", fallbackError);
-      return NextResponse.json(
-        { error: "Failed to fetch menu", code: "INTERNAL_ERROR" },
-        { status: 500 }
-      );
-    }
+    return NextResponse.json({ data: menuData });
+  } catch (err) {
+    console.error("[GET /api/menu]", err);
+    return NextResponse.json(
+      { error: "Internal server error", code: "INTERNAL_ERROR" },
+      { status: 500 }
+    );
   }
 }

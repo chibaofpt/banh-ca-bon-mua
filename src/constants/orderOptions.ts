@@ -23,6 +23,6 @@ export const ICE_OPTIONS: { label: string; value: IceOption }[] = [
 /** Display labels for size picker. */
 export const SIZE_LABELS: Record<"M" | "L" | "XL", string> = {
   M: "Cá Con",
-  L: "Cá Vua",
+  L: "Cá Vừa",
   XL: "Cá Lớn",
 };

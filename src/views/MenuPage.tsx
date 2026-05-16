@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Search, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
-import type { MenuData, MenuItem } from '@/src/lib/types/menu';
+import type { MenuData, MenuItem, Category } from '@/src/lib/types/menu';
 import { fetchMenu } from '@/src/services/menuService';
 import { fetchPowders } from '@/src/services/powderService';
 import { usePowderStore } from '@/src/lib/store/powderStore';
@@ -31,8 +31,8 @@ export default function MenuPage() {
   const router = useRouter();
   const [data, setData] = useState<MenuData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabId>('latte');
-  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<TabId>('seasonal');
+
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
 
   const setPowderData = usePowderStore((s) => s.setPowderData);
@@ -40,6 +40,7 @@ export default function MenuPage() {
   useEffect(() => {
     Promise.all([fetchMenu(), fetchPowders()])
       .then(([menuRes, powderRes]) => {
+        console.log("DEBUG: GET /api/menu response:", menuRes);
         setData(menuRes);
         setPowderData(powderRes);
       })
@@ -47,46 +48,40 @@ export default function MenuPage() {
       .finally(() => setLoading(false));
   }, [setPowderData]);
 
-  const filteredItems = useMemo(() => {
+  const filteredItems = useMemo((): MenuItem[] => {
     if (!data) return [];
 
-    const items: MenuItem[] = data[activeTab] ?? [];
+    if (activeTab === 'seasonal') {
+      const allItems = [...(data.latte || []), ...(data.fusion || [])];
+      return allItems.filter(item => item.is_seasonal);
+    }
 
-    if (!searchQuery) return items;
-
-    return items.filter(item =>
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.description ?? "").toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [data, activeTab, searchQuery]);
+    return data[activeTab as Category] ?? [];
+  }, [data, activeTab]);
 
   return (
-    <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-32 pb-32 px-6">
+    <main className="min-h-screen bg-[#fdfcf7] text-foreground font-sans pt-18 pb-32 px-6">
       <div className="max-w-2xl mx-auto">
-        
+
+        {/* Back Button */}
+        <div className="">
+          <Link
+            href="/"
+            className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-sm border border-border/50 text-primary/60 hover:text-primary hover:shadow-md hover:scale-105 transition-all"
+            aria-label="Về trang chủ"
+          >
+            <ArrowLeft className="w-5 h-5 -ml-0.5" />
+          </Link>
+        </div>
+
         {/* Header - Match Image 3 */}
         <div className="text-center mb-12">
-          <Link 
-            href="/" 
-            className="inline-flex items-center gap-2 text-sm text-primary/60 hover:text-primary font-bold uppercase tracking-widest transition-colors mb-6"
-          >
-            <ArrowLeft className="w-4 h-4" /> Trang chủ
-          </Link>
-          <h1 className="font-serif text-4xl md:text-5xl font-bold text-primary mb-2">Thực Đơn</h1>
+          <h1 className="font-serif text-4xl md:text-5xl font-bold text-primary mb-2">Menu</h1>
           <p className="text-primary/60 text-sm italic">Chọn đúng mùa, đúng vị, đúng giá</p>
         </div>
 
-        {/* Search Bar - Match Image 3 glass-card */}
-        <div className="relative mb-8 group">
-          <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-primary/30 group-focus-within:text-primary/60 transition-colors" />
-          <input 
-            type="text"
-            placeholder="Hôm nay bạn muốn gì? (vd: lạnh và ngọt)"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-14 pr-6 py-4 rounded-4xl bg-white border border-border shadow-sm focus:outline-none focus:ring-4 focus:ring-primary/5 transition-all text-sm placeholder:text-primary/30"
-          />
-        </div>
+        {/* Search Bar - Removed */}
+
 
         {/* Tabs - Now using restored TabBar */}
         <TabBar activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -101,19 +96,19 @@ export default function MenuPage() {
                 ))}
               </div>
             ) : filteredItems.length === 0 ? (
-              <motion.div 
-                 key="empty"
-                 initial={{ opacity: 0 }}
-                 animate={{ opacity: 1 }}
-                 className="py-24 text-center text-primary/40 space-y-4"
+              <motion.div
+                key="empty"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="py-24 text-center text-primary/40 space-y-4"
               >
-                 <span className="text-6xl">🍲</span>
-                 <p className="font-bold text-lg italic">Không thấy món này...</p>
-                 <p className="text-sm">Thử tìm tên khác nhé</p>
+                <span className="text-6xl">🍲</span>
+                <p className="font-bold text-lg italic">Không thấy món này...</p>
+                <p className="text-sm">Thử tìm tên khác nhé</p>
               </motion.div>
             ) : (
-              <motion.div 
-                key={activeTab + searchQuery}
+              <motion.div
+                key={activeTab}
                 initial="hidden"
                 animate="visible"
                 className="grid grid-cols-2 gap-4 md:gap-6"
@@ -134,13 +129,13 @@ export default function MenuPage() {
       </div>
 
       {selectedItem && (
-          <ProductModal
-            key="product-modal-root"
-            item={selectedItem}
-            latteItems={data?.latte ?? []}
-            onClose={() => setSelectedItem(null)}
-          />
-        )}
+        <ProductModal
+          key="product-modal-root"
+          item={selectedItem}
+          latteItems={data?.latte ?? []}
+          onClose={() => setSelectedItem(null)}
+        />
+      )}
 
       <CartButton />
       <CartDrawer />

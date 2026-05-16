@@ -6,7 +6,7 @@ import FeatureCard from '@/src/components/home/FeatureCard';
 
 const cards = [
   { icon: "🍵", label: "Ceremonial Grade", description: "Matcha nguyên chất, không pha tạp", direction: "left" },
-  { icon: "🍂", label: "Theo mùa", description: "Thực đơn cập nhật liên tục", direction: "right" },
+  { icon: "🍂", label: "Theo mùa", description: "Menu cập nhật liên tục", direction: "right" },
   { icon: "💸", label: "Từ 25k", description: "Chất lượng không cần đắt", direction: "left" },
 ];
 
@@ -81,7 +81,7 @@ const IntroSection: React.FC = () => {
             thủ công, rót trực tiếp từ katakuchi trên nền sữa tươi và đá lạnh.
           </p>
           <p>
-            Thực đơn thay đổi theo mùa để giữ nguyên độ tươi của nguyên liệu. Dù là
+            Menu thay đổi theo mùa để giữ nguyên độ tươi của nguyên liệu. Dù là
             matcha latte đá, matcha sữa nóng hay matcha thuần — bạn luôn có lựa chọn
             đúng mùa, đúng vị, đúng giá.
           </p>
@@ -113,7 +113,7 @@ const IntroSection: React.FC = () => {
             className="bg-primary text-primary-foreground px-10 py-4 rounded-full font-bold 
               transition-all duration-300 hover:scale-105 hover:bg-primary/90 shadow-xl"
           >
-            Xem thực đơn 🐟
+            Xem Menu 🐟
           </button>
         </div>
       </div>

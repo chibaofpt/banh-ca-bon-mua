@@ -64,7 +64,26 @@ export async function GET(): Promise<NextResponse> {
       })).sort((a, b) => SIZE_ORDER[a.size] - SIZE_ORDER[b.size]),
     }));
 
-    return NextResponse.json({ data });
+    let maxUpdatedAt = new Date(0);
+    const latte = [];
+    const fusion = [];
+
+    for (const item of data) {
+      if (item.updated_at > maxUpdatedAt) maxUpdatedAt = item.updated_at;
+      if (item.category === "latte") latte.push(item);
+      else fusion.push(item);
+    }
+
+    const seasonal = data.filter(item => item.is_seasonal);
+
+    return NextResponse.json({ 
+      data: {
+        updated_at: maxUpdatedAt.toISOString(),
+        latte,
+        fusion,
+        seasonal,
+      }
+    });
   } catch (err) {
     console.error("[GET /api/admin/menu]", err);
     return NextResponse.json({ error: "Internal server error", code: "INTERNAL_ERROR" }, { status: 500 });

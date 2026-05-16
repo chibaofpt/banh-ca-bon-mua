@@ -61,6 +61,11 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
     >
       {/* Image / Icon Area */}
       <div className="aspect-4/3 bg-[#d9e4d4] relative overflow-hidden flex items-center justify-center p-10">
+        {item.is_seasonal && (
+          <div className="absolute top-3 right-3 z-10 bg-white/90 backdrop-blur-sm text-amber-600 text-[9px] font-medium uppercase tracking-[0.2em] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 border border-amber-200/50">
+            <span>✨ Seasonal</span>
+          </div>
+        )}
         {item.image_url ? (
           <img
             src={item.image_url}

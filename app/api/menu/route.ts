@@ -81,6 +81,7 @@ export async function GET(): Promise<NextResponse> {
     // ── Build response ───────────────────────────────────────────────────────
     const latte: MenuItem[] = [];
     const fusion: MenuItem[] = [];
+    const SIZE_ORDER: Record<string, number> = { M: 0, L: 1, XL: 2 };
 
     let maxUpdatedAt = new Date(0);
     for (const item of items) {
@@ -95,7 +96,8 @@ export async function GET(): Promise<NextResponse> {
           size: s.size,
           base_price_vnd: s.base_price_vnd as number,
           milk_ml: milkMlMap[s.size] ?? 0,
-        }));
+        }))
+        .sort((a, b) => SIZE_ORDER[a.size] - SIZE_ORDER[b.size]);
 
       const menuItem: MenuItem = {
         id: item.id,

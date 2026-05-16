@@ -7,7 +7,7 @@ import type { MenuItem, SweetnessLevel, Size } from "@/src/lib/types/menu";
 import type { IceOption, CartItem } from "@/src/lib/types/cart";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 import { cn } from "@/src/utils/cn";
-import { calcLattePrice, calcFusionPrice, resolveGram } from "@/src/utils/pricing";
+import { calcLattePrice, calcFusionPrice, resolveGram, ceilTo1000 } from "@/src/utils/pricing";
 import { SWEETNESS_OPTIONS, ICE_OPTIONS, SIZE_LABELS } from "@/src/constants/orderOptions";
 
 interface AddonModalProps {
@@ -71,6 +71,9 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
   const quantityGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "QUANTITY"), [item.addon_groups]);
   const selectorGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "SELECTOR"), [item.addon_groups]);
   const toggleGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "TOGGLE"), [item.addon_groups]);
+  
+  const matchaSelectorGroups = useMemo(() => selectorGroups.filter(g => g.name.toLowerCase().includes("matcha")), [selectorGroups]);
+  const otherSelectorGroups = useMemo(() => selectorGroups.filter(g => !g.name.toLowerCase().includes("matcha")), [selectorGroups]);
   const defaultMilkId = item.milk_types?.find(m => m.is_default)?.id ?? "";
 
   const powderList = !isLatte && item.allowed_powder_ids.length > 0
@@ -108,12 +111,15 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
         const qty = quantityMap[g.id] ?? 0;
         const opt = g.options[0];
         if (qty > 0 && opt) {
-          if (opt.gram_value != null) addonsCost += qty * (opt.gram_value * pwd_price_per_gram);
-          else addonsCost += qty * opt.price_vnd;
+          const rawCost = qty * (opt.gram_value != null ? opt.gram_value * pwd_price_per_gram : opt.price_vnd);
+          addonsCost += ceilTo1000(rawCost);
         }
       } else {
         for (const opt of g.options) {
-          if (selectedOptionIds.includes(opt.id)) addonsCost += opt.price_vnd;
+          if (selectedOptionIds.includes(opt.id)) {
+            const rawCost = opt.gram_value != null ? opt.gram_value * pwd_price_per_gram : opt.price_vnd;
+            addonsCost += ceilTo1000(rawCost);
+          }
         }
       }
     }
@@ -348,13 +354,25 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
           {/* 4. COLDWHISK */}
           <div className="mt-7">
             <SectionLabel text="Đánh lạnh (Coldwhisk)" />
-            <div className="grid grid-cols-3 gap-2">
-              <OptionCard
-                label="Coldwhisk"
-                sub="Foam matcha"
-                isActive={coldwhisk}
+            <div className="flex items-center justify-between bg-white rounded-2xl border-2 border-border px-5 py-4">
+              <div>
+                <p className="text-xs font-bold text-primary">Coldwhisk</p>
+                <p className="text-[11px] text-primary/50 mt-0.5 font-medium">Foam matcha mịn màng</p>
+              </div>
+              <button
                 onClick={() => setColdwhisk(!coldwhisk)}
-              />
+                className={cn(
+                  "relative inline-flex h-7 w-12 items-center rounded-full transition-colors",
+                  coldwhisk ? "bg-primary" : "bg-primary/20"
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-5 w-5 transform rounded-full bg-white transition-transform shadow-sm",
+                    coldwhisk ? "translate-x-6" : "translate-x-1"
+                  )}
+                />
+              </button>
             </div>
           </div>
 
@@ -374,11 +392,11 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
           </div>
 
           {/* 6. TOPPING */}
-          {(selectorGroups.length > 0 || toggleGroups.length > 0) && (
+          {(otherSelectorGroups.length > 0 || toggleGroups.length > 0) && (
             <div className="mt-7">
               <SectionLabel text="Topping" />
               <div className="grid grid-cols-3 gap-2">
-                {selectorGroups.map((group) =>
+                {otherSelectorGroups.map((group) =>
                   group.options.filter(o => !o.is_default).map((opt) => {
                     const defaultOpt = group.options.find(o => o.is_default);
                     return (
@@ -409,20 +427,42 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
             </div>
           )}
 
-          {/* 7. EXTRA MATCHA */}
+          {/* 7. EXTRA MATCHA (SELECTOR) */}
+          {matchaSelectorGroups.map((group) => (
+            <div key={group.id} className="mt-7">
+              <SectionLabel text={group.name} />
+              <div className="grid grid-cols-3 gap-2">
+                {group.options.filter(o => !o.is_default).map((opt) => {
+                  const defaultOpt = group.options.find(o => o.is_default);
+                  const price = ceilTo1000(opt.gram_value != null ? opt.gram_value * activePowderPricePerGram : opt.price_vnd);
+                  return (
+                    <OptionCard
+                      key={opt.id}
+                      label={opt.label}
+                      sub={price > 0 ? `+${price / 1000}k` : (opt.is_default ? "Mặc định" : "0k")}
+                      isActive={selectedOptionIds.includes(opt.id)}
+                      onClick={() => handleSelectorToggle(group.id, opt.id, defaultOpt?.id)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          {/* 8. EXTRA MATCHA (QUANTITY) */}
           {quantityGroups.map((group) => {
             const qty = quantityMap[group.id] ?? 0;
             const max = group.max_quantity ?? 10;
             const opt = group.options[0];
             if (!opt) return null;
-            const pricePerQty = opt.gram_value != null
+            const rawPricePerQty = opt.gram_value != null
               ? opt.gram_value * activePowderPricePerGram
               : opt.price_vnd;
 
             const listLimit = Math.min(3, max);
             const pricesStr = Array.from({ length: listLimit }).map((_, i) => {
               const amount = i + 1;
-              const cost = (amount * pricePerQty) / 1000;
+              const cost = ceilTo1000(amount * rawPricePerQty) / 1000;
               return `${amount}g: +${cost}k`;
             }).join(", ") + (max > listLimit ? "..." : "");
 
@@ -433,7 +473,7 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
                   <div>
                     <p className="text-xs font-bold text-primary">{group.name}</p>
                     <p className="text-[11px] text-primary/50 mt-0.5 font-medium">
-                      {pricePerQty > 0 ? pricesStr : "Miễn phí"}
+                      {rawPricePerQty > 0 ? pricesStr : "Miễn phí"}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 bg-[#d9e4d4] rounded-xl px-3 py-2">

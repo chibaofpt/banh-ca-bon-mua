@@ -33,6 +33,8 @@ export async function GET(): Promise<NextResponse> {
       milkMlMap[c.size] = c.milk_ml;
     }
 
+    const SIZE_ORDER: Record<string, number> = { M: 0, L: 1, XL: 2 };
+
     const data = items.map((item) => ({
       id: item.id,
       name: item.name,
@@ -59,7 +61,7 @@ export async function GET(): Promise<NextResponse> {
         size: s.size,
         base_price_vnd: s.base_price_vnd,
         milk_ml: milkMlMap[s.size] ?? 0,
-      })),
+      })).sort((a, b) => SIZE_ORDER[a.size] - SIZE_ORDER[b.size]),
     }));
 
     return NextResponse.json({ data });

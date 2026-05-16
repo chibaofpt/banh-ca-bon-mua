@@ -3,6 +3,8 @@
 import React from 'react';
 import { Coffee } from 'lucide-react';
 import type { MenuItem } from '@/src/lib/types/menu';
+import { usePowderStore } from '@/src/lib/store/powderStore';
+import { calcLattePrice, calcFusionPrice, resolveGram } from '@/src/utils/pricing';
 
 interface MenuCardProps {
   item: MenuItem;
@@ -20,6 +22,37 @@ const SIZE_CARD_LABELS: Record<string, string> = {
 /** MenuCard — displays a single menu item in the customer menu grid. */
 const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
   const sizes = item.sizes.filter((s) => s.base_price_vnd != null);
+  const powders = usePowderStore((s) => s.data);
+  const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
+  
+  const isLatte = item.category === "latte";
+  const defaultPowderId = isLatte ? item.powder?.id : item.resolved_default_powder_id;
+  const defaultMilk = item.milk_types?.find(m => m.is_default) ?? item.milk_types?.[0];
+
+  const getDisplayPrice = (sizeObj: MenuItem["sizes"][0]) => {
+    const s = sizeObj.size;
+    const base = sizeObj.base_price_vnd ?? 0;
+    const pwd = powders.find(p => p.id === defaultPowderId);
+    const pwdPrice = pwd?.price_per_gram ?? 0;
+    const gram = resolveGram(s, item.custom_powder_grams, pwd?.size_config ?? [], defaultPowderGrams);
+
+    if (isLatte) {
+      return calcLattePrice({
+        base_price_vnd: base,
+        gram,
+        powder_price_per_gram: pwdPrice,
+        milk_ml: sizeObj.milk_ml ?? 0,
+        milk_price_per_ml: defaultMilk?.price_per_ml ?? 40
+      });
+    } else {
+      return calcFusionPrice({
+        base_price_vnd: base,
+        gram,
+        powder_price_per_gram: pwdPrice,
+        premium_latte: 0
+      });
+    }
+  };
 
   return (
     <div
@@ -54,7 +87,7 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
                   {SIZE_CARD_LABELS[s.size] ?? s.size}
                 </span>
                 <span className="text-sm font-bold text-primary">
-                  {(s.base_price_vnd ?? 0) / 1000}k
+                  {getDisplayPrice(s) / 1000}k
                 </span>
               </div>
             ))}

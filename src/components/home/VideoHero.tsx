@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 
 const highlights = [
   { icon: Leaf, title: "Ceremonial Grade", desc: "Matcha chất lượng, nhập thẳng từ Nhật" },
-  { icon: Sun, title: "Theo mùa", desc: "Thực đơn cập nhật liên tục" },
+  { icon: Sun, title: "Theo mùa", desc: "Menu cập nhật liên tục" },
   { icon: Coffee, title: "Giá từ 30k", desc: "Chất lượng không cần đắt" },
 ];
 

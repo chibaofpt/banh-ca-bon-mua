@@ -76,7 +76,7 @@ const Navbar = () => {
             activeClassName="text-primary"
           >
             <UtensilsCrossed className="w-3.5 h-3.5" />
-            Thực đơn
+            Menu
           </NavLink>
 
           <NavLink
@@ -196,7 +196,7 @@ const Navbar = () => {
                 activeClassName="text-primary"
               >
                 <UtensilsCrossed className="w-4 h-4" />
-                Thực đơn
+                Menu
               </NavLink>
 
               <NavLink

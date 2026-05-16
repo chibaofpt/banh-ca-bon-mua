@@ -153,7 +153,6 @@ model MenuItem {
   base_liquid_note     String?
   updated_at           DateTime              @default(now()) @db.Timestamptz(6)
   fusionAllowedPowders FusionAllowedPowder[]
-  /// Powder that references this Latte item as its pricing anchor
   referenceLatteItem   MatchaPowder?         @relation("MatchaPowder_referenceLatteItem")
   sizes                MenuItemSize[]
   defaultPowder        MatchaPowder?         @relation("MenuItem_defaultPowder", fields: [default_powder_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -183,15 +182,15 @@ model AddonGroup {
 }
 
 model AddonOption {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  addon_group_id String           @db.Uuid
-  label          String
-  price_vnd      Int              @default(0)
-  is_default     Boolean          @default(false)
-  sort_order     Int              @default(0)
+  id              String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  addon_group_id  String           @db.Uuid
+  label           String
+  price_vnd       Int              @default(0)
+  is_default      Boolean          @default(false)
+  sort_order      Int              @default(0)
   /// gram amount for extra matcha options; null for all other addon types
-  gram_value     Decimal?         @db.Decimal
-  group          AddonGroup       @relation(fields: [addon_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  gram_value      Decimal?         @db.Decimal
+  group           AddonGroup       @relation(fields: [addon_group_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   orderItemAddons OrderItemAddon[]
 
   @@map("addon_options")
@@ -271,8 +270,6 @@ model OrderItemAddon {
   @@map("order_item_addons")
 }
 
-// ── New Phase 2 models ────────────────────────────────────────────────────────
-
 model MatchaPowder {
   id                      String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                    String
@@ -342,8 +339,6 @@ model FusionAllowedPowder {
   @@id([menu_item_id, powder_id])
   @@map("fusion_allowed_powder")
 }
-
-// ── Enums ─────────────────────────────────────────────────────────────────────
 
 enum Role {
   CUSTOMER

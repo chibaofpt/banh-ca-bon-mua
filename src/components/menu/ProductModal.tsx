@@ -35,7 +35,7 @@ function OptionCard({
   );
 }
 
-const ProductModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) => {
+const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) => {
   const { addItem } = useCartStore();
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
@@ -510,4 +510,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }
   );
 };
 
-export default ProductModal;
+const LatteModal: React.FC<ProductModalProps> = (props) => <BaseModal {...props} />;
+const FusionModal: React.FC<ProductModalProps> = (props) => <BaseModal {...props} />;
+
+export default function ProductModal(props: ProductModalProps) {
+  if (props.item.category === "latte") return <LatteModal {...props} />;
+  if (props.item.category === "fusion") return <FusionModal {...props} />;
+  return null;
+}

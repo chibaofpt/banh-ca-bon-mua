@@ -1,8 +1,8 @@
 import MenuPage from '@/src/views/MenuPage';
 
 export const metadata = {
-  title: 'Thực đơn — Bánh Cá Bốn Mùa',
-  description: 'Khám phá thực đơn bánh cá nướng và trà matcha đặc trưng của Bánh Cá Bốn Mùa.',
+  title: 'Menu — Bánh Cá Bốn Mùa',
+  description: 'Khám phá menu bánh cá nướng và trà matcha đặc trưng của Bánh Cá Bốn Mùa.',
 };
 
 /**

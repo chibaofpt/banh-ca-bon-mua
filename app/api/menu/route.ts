@@ -144,10 +144,14 @@ export async function GET(): Promise<NextResponse> {
       }
     }
 
-    const menuData: MenuData = {
+    const allItems = [...latte, ...fusion];
+    const seasonal = allItems.filter(item => item.is_seasonal);
+
+    const menuData: any = {
       updated_at: maxUpdatedAt.toISOString(),
       latte,
       fusion,
+      seasonal,
     };
 
     return NextResponse.json({ data: menuData });

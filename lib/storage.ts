@@ -1,10 +1,9 @@
-import axios from 'axios';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 let supabase: SupabaseClient | null = null;
 
-/** Returns a singleton instance of the Supabase client for storage operations. */
-function getSupabase() {
+/** Returns a singleton instance of the Supabase admin client for storage operations. */
+function getSupabase(): SupabaseClient {
   if (supabase) return supabase;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -14,65 +13,37 @@ function getSupabase() {
     throw new Error('Supabase URL and Service Role Key are required for storage operations.');
   }
 
-  supabase = createClient(supabaseUrl, supabaseServiceKey);
+  supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { persistSession: false },
+  });
   return supabase;
 }
 
 /**
- * Uploads a menu item image to Supabase Storage.
+ * Uploads a menu item image to Supabase Storage via the official SDK.
+ * Uses upsert so re-uploading the same filename overwrites the previous file.
  */
-
-import sharp from 'sharp';
-
 export const uploadMenuImage = async (
   fileName: string,
   buffer: Buffer,
   contentType: string
 ): Promise<string> => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-  
-  let uploadBuffer = buffer;
-  let finalContentType = contentType;
-  let finalFileName = fileName;
+  const client = getSupabase();
 
-  // Auto-compress large images to bypass ISP throttling and improve load times
-  if (buffer.length > 300 * 1024 && contentType.startsWith('image/')) {
-    try {
-      uploadBuffer = await sharp(buffer)
-        .resize({ width: 1200, withoutEnlargement: true })
-        .webp({ quality: 80 })
-        .toBuffer();
-        
-      finalFileName = fileName.replace(/\.[^/.]+$/, "") + ".webp";
-      finalContentType = 'image/webp';
-      console.log(`[Storage] Compressed image from ${buffer.length} to ${uploadBuffer.length} bytes`);
-    } catch (err) {
-      console.error("[Storage] Image compression failed, falling back to original buffer", err);
-    }
-  }
-
-  const url = `${supabaseUrl}/storage/v1/object/menu-images/${finalFileName}`;
-
-  try {
-    await axios.post(url, uploadBuffer, {
-      headers: {
-        Authorization: `Bearer ${supabaseServiceKey}`,
-        apikey: supabaseServiceKey,
-        'Content-Type': finalContentType,
-        'x-upsert': 'true',
-        Connection: 'close',
-      },
-      maxBodyLength: Infinity,
-    });
-  } catch (error: any) {
-    const details = error.response?.data || error.message;
-    throw new Error(`Upload failed via direct API: ${JSON.stringify(details)}`);
-  }
-
-  const { data: publicData } = getSupabase().storage
+  const { error } = await client.storage
     .from('menu-images')
-    .getPublicUrl(finalFileName);
+    .upload(fileName, buffer, {
+      contentType,
+      upsert: true,
+    });
+
+  if (error) {
+    throw new Error(`Upload failed: ${error.message}`);
+  }
+
+  const { data: publicData } = client.storage
+    .from('menu-images')
+    .getPublicUrl(fileName);
 
   return publicData.publicUrl;
 };

@@ -5,6 +5,8 @@ import { createMenuSchema } from "@/lib/validations/menu";
 import { uploadMenuImage } from "@/lib/storage";
 import type { Prisma } from "@prisma/client";
 
+export const dynamic = "force-dynamic";
+
 // ── Types ───────────────────────────────────────────────────────────────────
 
 type MenuItemWithRelations = Prisma.MenuItemGetPayload<{

@@ -82,10 +82,12 @@ export async function PUT(
   const { id } = await params;
 
   try {
+    console.log("[PUT] STEP 1 — start, id:", id);
     // ── Detect Content-Type → parse body ──────────────────────────────────
     // Toggle availability sends JSON { is_available }
     // Form edit sends multipart/form-data — both go through this same route
     const contentType = req.headers.get("content-type") ?? "";
+    console.log("[PUT] STEP 2 — content-type:", contentType);
     let raw: Record<string, unknown>;
     let imageFile: File | null = null;
 
@@ -160,10 +162,13 @@ export async function PUT(
       raw = (await req.json().catch(() => null)) ?? {};
     }
 
-    console.log("[PUT /api/admin/menu/[id]] RAW DATA:", JSON.stringify(raw, null, 2));
+    console.log("[PUT] STEP 3 — raw keys:", Object.keys(raw));
+    console.log("[PUT] STEP 3 — imageFile:", imageFile ? `${imageFile.name} (${imageFile.size}b, ${imageFile.type})` : null);
 
     // ── findUnique → 404 ─────────────────────────────────────────────────
+    console.log("[PUT] STEP 4 — querying DB for id:", id);
     const existing = await prisma.menuItem.findUnique({ where: { id } });
+    console.log("[PUT] STEP 5 — existing:", existing ? existing.name : "NOT FOUND");
     if (!existing)
       return NextResponse.json({ error: "Không tìm thấy món", code: "NOT_FOUND" }, { status: 404 });
 
@@ -181,10 +186,12 @@ export async function PUT(
       );
     }
     const validData = validation.data;
+    console.log("[PUT] STEP 6 — validation passed");
 
     // ── Image upload (multipart only) ─────────────────────────────────────
     let image_url: string | undefined;
     if (imageFile) {
+      console.log("[PUT] STEP 7 — uploading image:", imageFile.name, imageFile.type, imageFile.size);
       const allowed = ["image/jpeg", "image/png", "image/webp"];
       if (!allowed.includes(imageFile.type))
         return NextResponse.json(
@@ -197,7 +204,20 @@ export async function PUT(
           { status: 400 }
         );
       const buffer = Buffer.from(await imageFile.arrayBuffer());
-      image_url = await uploadMenuImage(`${Date.now()}-${imageFile.name}`, buffer, imageFile.type);
+      console.log("[PUT] STEP 8 — buffer ready, size:", buffer.length);
+      try {
+        image_url = await uploadMenuImage(`${Date.now()}-${imageFile.name}`, buffer, imageFile.type);
+        console.log("[PUT] STEP 9 — upload OK, url:", image_url);
+      } catch (uploadErr: unknown) {
+        const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+        console.error("[PUT] STEP 9 FAILED — upload error:", msg);
+        return NextResponse.json(
+          { error: `Upload ảnh thất bại: ${msg}`, code: "UPLOAD_ERROR" },
+          { status: 500 }
+        );
+      }
+    } else {
+      console.log("[PUT] STEP 7 — no image to upload");
     }
 
     // ── DB write in transaction ───────────────────────────────────────────
@@ -266,10 +286,13 @@ export async function PUT(
     for (const c of defaultSizeConfigs) milkMlMap[c.size] = c.milk_ml;
 
     return NextResponse.json({ data: formatAdminMenuItem(updatedItem, milkMlMap) });
-  } catch (err) {
-    console.error("[PUT /api/admin/menu/[id]]", err);
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    console.error("[PUT] UNCAUGHT ERROR:", msg);
+    console.error("[PUT] STACK:", stack);
     return NextResponse.json(
-      { error: "Internal server error", code: "INTERNAL_ERROR" },
+      { error: "Internal server error", code: "INTERNAL_ERROR", details: { msg } },
       { status: 500 }
     );
   }

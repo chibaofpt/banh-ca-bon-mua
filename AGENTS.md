@@ -7,7 +7,8 @@
 ## Current State
 
 - [x] Phase 1 — Supabase, Prisma tables, auth routes, middleware, Login/Register pages
-- [ ] Phase 2 — Menu + Addons API — **in progress**
+- [x] Phase 2 (partial) — GET /api/menu done, frontend mounted
+- [ ] Phase 2 (in progress) — Admin menu CRUD (edit + delete)
 - [ ] Phase 3 — Orders + Points
 - [ ] Phase 4 — Vouchers + QR
 - [ ] Phase 5 — Promotions + OTP + Redis
@@ -24,6 +25,7 @@
 | API route, request/response shape, business logic | `API.md` |
 | DB schema, Prisma, migration, enum | `SCHEMA.md` |
 | Deferred issues, unresolved decisions, env vars | `NOTES.md` |
+| Admin/staff UI, flows, form fields, roles | `ADMIN_PLAN.md` |
 
 > Never skip reading the relevant file. Do not rely on memory alone.
 

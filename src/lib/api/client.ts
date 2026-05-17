@@ -1,9 +1,14 @@
 import axios from "axios";
 
-/** Shared Axios instance — do not create other instances */
+/**
+ * Shared Axios instance — do not create other instances.
+ * NOTE: No global Content-Type header — Axios sets it per request:
+ *   • Plain object data → application/json (Axios default)
+ *   • FormData → multipart/form-data with correct boundary (browser auto-set)
+ * Setting Content-Type globally would override FormData boundary and break file uploads.
+ */
 export const apiClient = axios.create({
   withCredentials: true,
-  headers: { "Content-Type": "application/json" },
 });
 
 // Automatically retry once with refresh token on 401

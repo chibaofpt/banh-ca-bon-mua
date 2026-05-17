@@ -24,7 +24,7 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
   const sizes = item.sizes.filter((s) => s.base_price_vnd != null);
   const powders = usePowderStore((s) => s.data);
   const defaultPowderGrams = usePowderStore((s) => s.defaultPowderGram);
-  
+
   const isLatte = item.category === "latte";
   const defaultPowderId = isLatte ? item.powder?.id : item.resolved_default_powder_id;
   const defaultMilk = item.milk_types?.find(m => m.is_default) ?? item.milk_types?.[0];
@@ -60,7 +60,7 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
       className="group flex flex-col h-full bg-white rounded-4xl overflow-hidden border border-border shadow-sm hover:shadow-lg active:scale-[0.98] transition-all duration-300 cursor-pointer"
     >
       {/* Image / Icon Area */}
-      <div className="aspect-4/3 bg-[#d9e4d4] relative overflow-hidden flex items-center justify-center p-10">
+      <div className="aspect-4/3 bg-[#d9e4d4] relative overflow-hidden flex items-center justify-center">
         {item.is_seasonal && (
           <div className="absolute top-3 right-3 z-10 bg-white/90 backdrop-blur-sm text-amber-600 text-[9px] font-medium uppercase tracking-[0.2em] px-2 py-0.5 rounded-full shadow-sm flex items-center gap-1 border border-amber-200/50">
             <span>✨ Seasonal</span>
@@ -79,16 +79,16 @@ const MenuCard: React.FC<MenuCardProps> = ({ item, onClick }) => {
 
       {/* Content Area */}
       <div className="px-4 pt-3 pb-4 flex flex-col flex-1 bg-white">
-        <h3 className="font-serif font-bold text-base text-foreground mb-3 truncate">
+        <h3 className="font-serif font-light text-base text-foreground mb-3 truncate">
           {item.name}
         </h3>
 
         {/* Size prices row */}
-        <div className="mt-auto pt-3 border-t border-border">
+        <div className="mt-auto pt-3">
           <div className="flex items-end justify-between gap-1">
             {sizes.map((s) => (
               <div key={s.size} className="flex flex-col items-center gap-0.5 flex-1">
-                <span className="text-[10px] font-bold text-primary/40 uppercase tracking-wide whitespace-nowrap">
+                <span className="text-[8px] font-bold text-primary/40 uppercase tracking-wide whitespace-nowrap">
                   {SIZE_CARD_LABELS[s.size] ?? s.size}
                 </span>
                 <span className="text-sm font-bold text-primary">

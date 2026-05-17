@@ -22,6 +22,9 @@ interface AddonModalProps {
 function OptionCard({
   label, sub, isActive, onClick,
 }: { label: string; sub?: string; isActive: boolean; onClick: () => void }) {
+  const isPriceAddition = sub?.startsWith("+");
+  const isSizePrice = sub && sub.endsWith("k") && !sub.startsWith("+") && !sub.startsWith("-");
+
   return (
     <button
       onClick={onClick}
@@ -31,7 +34,20 @@ function OptionCard({
       )}
     >
       <span className={cn("text-xs font-bold leading-tight", isActive ? "text-primary" : "text-primary/70")}>{label}</span>
-      {sub && <span className={cn("text-[10px] font-medium mt-0.5", isActive ? "text-primary/60" : "text-primary/40")}>{sub}</span>}
+      {sub && (
+        <span
+          className={cn(
+            "text-[10px] mt-0.5",
+            isSizePrice
+              ? "text-xs text-black"
+              : isPriceAddition
+              ? "text-[#df5e5e] font-semibold"
+              : cn("font-medium", isActive ? "text-primary/60" : "text-primary/40")
+          )}
+        >
+          {sub}
+        </span>
+      )}
     </button>
   );
 }
@@ -71,7 +87,7 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
   const quantityGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "QUANTITY"), [item.addon_groups]);
   const selectorGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "SELECTOR"), [item.addon_groups]);
   const toggleGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "TOGGLE"), [item.addon_groups]);
-  
+
   const matchaSelectorGroups = useMemo(() => selectorGroups.filter(g => g.name.toLowerCase().includes("matcha")), [selectorGroups]);
   const otherSelectorGroups = useMemo(() => selectorGroups.filter(g => !g.name.toLowerCase().includes("matcha")), [selectorGroups]);
   const defaultMilkId = item.milk_types?.find(m => m.is_default)?.id ?? "";
@@ -431,7 +447,7 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
           {matchaSelectorGroups.map((group) => (
             <div key={group.id} className="mt-7">
               <SectionLabel text={group.name} />
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-1">
                 {group.options.filter(o => !o.is_default).map((opt) => {
                   const defaultOpt = group.options.find(o => o.is_default);
                   const price = ceilTo1000(opt.gram_value != null ? opt.gram_value * activePowderPricePerGram : opt.price_vnd);
@@ -472,7 +488,7 @@ export function AddonModal({ item, latteItems, freeVoucherId, onClose, onConfirm
                 <div className="flex items-center justify-between bg-white rounded-2xl border-2 border-border px-5 py-4">
                   <div>
                     <p className="text-xs font-bold text-primary">{group.name}</p>
-                    <p className="text-[11px] text-primary/50 mt-0.5 font-medium">
+                    <p className={cn("text-[11px] mt-0.5", rawPricePerQty > 0 ? "text-[#df5e5e] font-semibold" : "text-primary/50 font-medium")}>
                       {rawPricePerQty > 0 ? pricesStr : "Miễn phí"}
                     </p>
                   </div>

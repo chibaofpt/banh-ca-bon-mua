@@ -1,219 +1,309 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
-import { cn } from "@/src/utils/cn";
+import { useEffect, useState, useCallback } from "react";
+import { Plus, Search, RefreshCw } from "lucide-react";
+import MenuItemCard from "@/src/components/admin/MenuItemCard";
+import MenuItemModal from "@/src/components/admin/MenuItemModal";
 import {
   listAdminMenuItems,
-  createMenuItem,
+  deleteMenuItem,
+  toggleMenuItemAvailability,
+  type AdminMenuData,
 } from "@/src/services/adminMenuService";
+import { listAdminPowders } from "@/src/services/adminPowderService";
 import type { AdminMenuItem } from "@/src/lib/types/menu";
-import AddMenuItemModal from "@/src/components/admin/AddMenuItemModal";
+import type { Powder } from "@/src/lib/types/powder";
+import { cn } from "@/src/utils/cn";
 
-/** AdminMenuPage — list and manage menu items with image upload, CRUD dialogs. */
+// ── Modal state ───────────────────────────────────────────────────────────────
+
+type ModalState =
+  | { open: false }
+  | { open: true; mode: "create" }
+  | { open: true; mode: "edit"; item: AdminMenuItem };
+
+// ── Confirm dialog ────────────────────────────────────────────────────────────
+
+interface ConfirmDialogProps {
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isLoading?: boolean;
+}
+
+function ConfirmDialog({ message, onConfirm, onCancel, isLoading }: ConfirmDialogProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
+      <div className="bg-card rounded-2xl shadow-xl p-6 max-w-sm w-full space-y-4">
+        <p className="text-sm text-foreground">{message}</p>
+        <div className="flex gap-2 justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isLoading}
+            className="px-4 py-2 rounded-xl text-sm border border-border hover:bg-secondary/40 transition disabled:opacity-50"
+          >
+            Hủy
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isLoading}
+            className="px-4 py-2 rounded-xl text-sm bg-destructive text-white hover:bg-destructive/90 transition disabled:opacity-50"
+          >
+            {isLoading ? "Đang xử lý..." : "Tiếp tục"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
+/** Trang quản lý menu — Admin. */
 export default function AdminMenuPage() {
-  const [items, setItems] = useState<AdminMenuItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [menuData, setMenuData] = useState<AdminMenuData | null>(null);
+  const [powders, setPowders] = useState<Powder[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState("Tất cả");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "latte" | "fusion">("all");
+  const [modalState, setModalState] = useState<ModalState>({ open: false });
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    listAdminMenuItems()
-      .then(setItems)
-      .catch(() => setError("Không thể tải danh sách món"))
-      .finally(() => setLoading(false));
+  // ── Data fetching ───────────────────────────────────────────────────────────
+
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [menu, powderRes] = await Promise.all([
+        listAdminMenuItems(),
+        listAdminPowders(),
+      ]);
+      setMenuData(menu);
+      setPowders(powderRes);
+    } catch {
+      setError("Không thể tải danh sách món. Vui lòng thử lại.");
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const [addModalOpen, setAddModalOpen] = useState(false);
-  const [openEditModal, setOpenEditModal] = useState(false); // Placeholder for edit flow
-  const [editingId, setEditingId] = useState<string | null>(null);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
-  const categories = [
-    "Tất cả",
-    ...Array.from(new Set(items.map((i) => i.category))).sort(),
-  ];
+  // ── Toast helper ────────────────────────────────────────────────────────────
 
-  const visibleItems =
-    activeCategory === "Tất cả"
-      ? items
-      : items.filter((i) => i.category === activeCategory);
-
-  const openAdd = () => {
-    setAddModalOpen(true);
+  const showToast = (msg: string, type: "success" | "error" = "success") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
   };
 
-  const openEdit = (item: AdminMenuItem) => {
-    setEditingId(item.id);
-    // TODO: wire edit modal when implemented
-    setOpenEditModal(true);
-    console.warn("TODO: implement edit flow using separate component");
+  // ── All items (flat for filtering) ─────────────────────────────────────────
+
+  const allItems: AdminMenuItem[] = menuData
+    ? [...menuData.latte, ...menuData.fusion]
+    : [];
+
+  const filteredItems = allItems.filter((item) => {
+    const matchesCategory =
+      categoryFilter === "all" || item.category === categoryFilter;
+    const matchesSearch =
+      searchQuery.trim() === "" ||
+      item.name.toLowerCase().includes(searchQuery.trim().toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
+  const handleCreateSuccess = (newItem: AdminMenuItem) => {
+    setMenuData((prev) => {
+      if (!prev) return prev;
+      const list = newItem.category === "latte" ? prev.latte : prev.fusion;
+      return {
+        ...prev,
+        [newItem.category]: [...list, newItem],
+      };
+    });
+    showToast(`Đã thêm món "${newItem.name}"`);
   };
 
-  const handleDelete = (id: string) => {
-    // Soft delete only: set is_available = false — PUT /api/admin/menu/[id]
-    // TODO: wire adminMenuService.updateItem(id, { is_available: false })
-    setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, is_available: false } : i)),
-    );
-    console.warn("TODO: wire toast — Đã ẩn món (soft delete)");
+  const handleEditSuccess = (updatedItem: AdminMenuItem) => {
+    setMenuData((prev) => {
+      if (!prev) return prev;
+      const updateList = (list: AdminMenuItem[]) =>
+        list.map((i) => (i.id === updatedItem.id ? updatedItem : i));
+      return {
+        ...prev,
+        latte: updateList(prev.latte),
+        fusion: updateList(prev.fusion),
+      };
+    });
+    showToast(`Đã cập nhật món "${updatedItem.name}"`);
   };
 
-  const toggleAvailable = (id: string) => {
-    const target = items.find((i) => i.id === id);
-    if (!target) return;
-    const next = !target.is_available;
-    setItems((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, is_available: next } : i)),
-    );
-    // TODO: wire adminMenuService.updateItem(id, { is_available: next }) — PUT /api/admin/menu/[id]
+  const handleModalSuccess = (item: AdminMenuItem) => {
+    if (modalState.open && modalState.mode === "edit") {
+      handleEditSuccess(item);
+    } else {
+      handleCreateSuccess(item);
+    }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20 text-muted-foreground text-sm">
-        Đang tải...
-      </div>
-    );
-  }
+  const handleToggleAvailable = async (id: string, next: boolean) => {
+    setTogglingId(id);
+    // Optimistic update
+    const rollback = menuData;
+    setMenuData((prev) => {
+      if (!prev) return prev;
+      const toggle = (list: AdminMenuItem[]) =>
+        list.map((i) => (i.id === id ? { ...i, is_available: next } : i));
+      return { ...prev, latte: toggle(prev.latte), fusion: toggle(prev.fusion) };
+    });
+    try {
+      await toggleMenuItemAvailability(id, next);
+    } catch {
+      setMenuData(rollback);
+      showToast("Không thể thay đổi trạng thái. Vui lòng thử lại.", "error");
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center py-20 text-destructive text-sm">
-        {error}
-      </div>
-    );
-  }
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="px-4 py-4 space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-serif text-2xl font-semibold">Sản phẩm</h1>
-          <p className="text-xs text-muted-foreground">{items.length} món trong menu</p>
+          <h1 className="text-xl font-bold text-foreground">Sản phẩm</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {allItems.length} món · {allItems.filter((i) => i.is_available).length} đang bán
+          </p>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-medium px-3 py-2 rounded-xl hover:bg-primary/90 transition"
-        >
-          <Plus size={16} />
-          Thêm món
-        </button>
-      </div>
-
-      {/* Category filter pills */}
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 no-scrollbar">
-        {categories.map((c) => (
+        <div className="flex gap-2">
           <button
-            key={c}
-            onClick={() => setActiveCategory(c)}
-            className={cn(
-              "shrink-0 px-3 py-1 rounded-full text-xs border transition",
-              activeCategory === c
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-secondary/40 text-foreground border-border",
-            )}
+            type="button"
+            aria-label="Làm mới"
+            onClick={loadData}
+            className="rounded-xl p-2 hover:bg-secondary/60 transition text-muted-foreground"
           >
-            {c}
+            <RefreshCw size={16} />
           </button>
-        ))}
+          <button
+            type="button"
+            onClick={() => setModalState({ open: true, mode: "create" })}
+            className="flex items-center gap-2 rounded-xl bg-primary text-primary-foreground px-4 py-2 text-sm font-medium hover:bg-primary/90 transition"
+          >
+            <Plus size={15} />
+            Thêm món
+          </button>
+        </div>
       </div>
 
-      {items.length === 0 && !loading && (
-        <div className="text-center py-12 text-muted-foreground text-sm">
-          Chưa có món nào
+      {/* Filters */}
+      <div className="flex gap-3 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search
+            size={14}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <input
+            type="search"
+            placeholder="Tìm tên món..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8 pr-3 py-2 rounded-xl border border-border bg-background text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40"
+          />
+        </div>
+        <div className="flex rounded-xl border border-border overflow-hidden text-sm">
+          {(["all", "latte", "fusion"] as const).map((cat) => (
+            <button
+              key={cat}
+              type="button"
+              onClick={() => setCategoryFilter(cat)}
+              className={cn(
+                "px-3 py-2 transition",
+                categoryFilter === cat
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-secondary/40"
+              )}
+            >
+              {cat === "all" ? "Tất cả" : cat.charAt(0).toUpperCase() + cat.slice(1)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Content */}
+      {isLoading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-56 rounded-2xl bg-secondary/30 animate-pulse" />
+          ))}
+        </div>
+      ) : error ? (
+        <div className="rounded-2xl border border-destructive/20 bg-destructive/5 px-4 py-6 text-center">
+          <p className="text-sm text-destructive">{error}</p>
+          <button
+            type="button"
+            onClick={loadData}
+            className="mt-3 text-sm text-primary hover:underline"
+          >
+            Thử lại
+          </button>
+        </div>
+      ) : filteredItems.length === 0 ? (
+        <div className="py-16 text-center text-muted-foreground text-sm">
+          {searchQuery || categoryFilter !== "all"
+            ? "Không tìm thấy món phù hợp."
+            : "Chưa có món nào. Bấm «Thêm món» để bắt đầu."}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          {filteredItems.map((item) => (
+            <div
+              key={item.id}
+              className={cn(togglingId === item.id && "pointer-events-none opacity-70")}
+            >
+              <MenuItemCard
+                item={item}
+                onClick={(i) => setModalState({ open: true, mode: "edit", item: i })}
+                onToggleAvailable={handleToggleAvailable}
+              />
+            </div>
+          ))}
         </div>
       )}
 
-      <div className="space-y-3">
-        {visibleItems.map((item) => (
-          <div
-            key={item.id}
-            className="bg-card rounded-2xl border border-border p-3 flex gap-3 items-center shadow-sm"
-          >
-            {/* Image / placeholder */}
-            <div className="w-16 h-16 rounded-xl bg-secondary/40 flex items-center justify-center text-3xl shrink-0 overflow-hidden">
-              {item.image_url ? (
-                <img
-                  src={item.image_url}
-                  alt={item.name}
-                  className="w-full h-full object-cover rounded-xl"
-                />
-              ) : (
-                <span>🍵</span>
-              )}
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h3 className="font-medium text-sm truncate">{item.name}</h3>
-                  <p className="text-[11px] text-muted-foreground">{item.category}</p>
-                </div>
-                <div className="text-primary font-semibold text-sm whitespace-nowrap">
-                  {item.sizes.some((s) => s.base_price_vnd !== null)
-                    ? `🐟 ${Math.min(...item.sizes.filter((s) => s.base_price_vnd !== null).map((s) => s.base_price_vnd as number)) / 1000}+ cá`
-                    : "Chưa có giá"}
-                </div>
-              </div>
-              {item.description && (
-                <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
-                  {item.description}
-                </p>
-              )}
-
-              <div className="flex items-center justify-between mt-2">
-                <label className="flex items-center gap-2 text-xs cursor-pointer">
-                  <button
-                    role="switch"
-                    aria-checked={item.is_available}
-                    onClick={() => toggleAvailable(item.id)}
-                    className={cn(
-                      "relative inline-flex h-5 w-9 rounded-full transition",
-                      item.is_available ? "bg-primary" : "bg-border",
-                    )}
-                  >
-                    <span
-                      className={cn(
-                        "block h-4 w-4 rounded-full bg-white shadow transition-transform m-0.5",
-                        item.is_available ? "translate-x-4" : "translate-x-0",
-                      )}
-                    />
-                  </button>
-                  <span
-                    className={item.is_available ? "text-primary" : "text-muted-foreground"}
-                  >
-                    {item.is_available ? "Đang bán" : "Tạm hết"}
-                  </span>
-                </label>
-
-                <div className="flex gap-1">
-                  <button
-                    onClick={() => openEdit(item)}
-                    className="p-2 rounded-lg hover:bg-secondary/40 text-muted-foreground"
-                    aria-label="Sửa"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(item.id)}
-                    className="p-2 rounded-lg hover:bg-destructive/10 text-destructive"
-                    aria-label="Xoá"
-                  >
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {addModalOpen && (
-        <AddMenuItemModal
-          onClose={() => setAddModalOpen(false)}
-          onCreated={(item) => setItems((prev) => [item, ...prev])}
-          onSubmit={createMenuItem}
+      {/* Modal */}
+      {modalState.open && (
+        <MenuItemModal
+          mode={modalState.mode}
+          item={modalState.mode === "edit" ? modalState.item : undefined}
+          powders={powders}
+          onClose={() => setModalState({ open: false })}
+          onSuccess={handleModalSuccess}
         />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div
+          className={cn(
+            "fixed bottom-5 right-5 z-50 rounded-xl px-4 py-3 text-sm font-medium shadow-lg transition animate-in fade-in slide-in-from-bottom-2",
+            toast.type === "success"
+              ? "bg-primary text-primary-foreground"
+              : "bg-destructive text-white"
+          )}
+        >
+          {toast.msg}
+        </div>
       )}
     </div>
   );

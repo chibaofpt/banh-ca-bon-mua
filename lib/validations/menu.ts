@@ -58,7 +58,7 @@ export const createMenuSchema = z.discriminatedUnion("category", [
  * Build as a separate object rather than unwrapping the discriminated union.
  */
 export const updateMenuSchema = z.object({
-  category: z.enum(["latte", "fusion"]),
+  category: z.enum(["latte", "fusion"]).optional(),
   name: z.string().min(1).optional(),
   description: z.string().optional().nullable(),
   is_available: z.boolean().optional(),
@@ -72,6 +72,8 @@ export const updateMenuSchema = z.object({
   // Fusion
   default_powder_id: z.string().uuid().optional().nullable(),
   base_liquid_note: z.string().max(200).optional().nullable(),
+  /** Fusion only — replaces all fusionAllowedPowder rows when provided. */
+  allowed_powder_ids: z.array(z.string().uuid()).optional(),
 });
 
 export type CreateMenuInput = z.infer<typeof createMenuSchema>;

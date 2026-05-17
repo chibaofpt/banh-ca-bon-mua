@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Trash2 } from "lucide-react";
 import { useCartStore, useCartTotalPrice } from "@/src/lib/store/cartStore";
+import Image from "next/image";
 import { SWEETNESS_OPTIONS, ICE_OPTIONS } from "@/src/constants/orderOptions";
 import { usePowderStore } from "@/src/lib/store/powderStore";
 
@@ -87,61 +88,49 @@ const CartDrawer = () => {
               ) : (
                 <div className="space-y-3 mt-4">
                   {items.map((item) => (
-                    <div key={item.cartId} className="p-4 rounded-2xl bg-white border border-border shadow-sm relative overflow-hidden">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 pr-4">
-                          <h4 className="font-bold text-sm text-primary leading-tight">
+                    <div key={item.cartId} className="p-4 rounded-2xl bg-white border border-border shadow-sm relative overflow-hidden flex gap-3">
+                      {/* Image Thumbnail */}
+                      <div className="w-16 h-16 shrink-0 rounded-xl overflow-hidden bg-secondary/10 border border-border/50 relative">
+                        {item.imageUrl ? (
+                          <Image src={item.imageUrl} alt={item.name} fill sizes="64px" className="object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-2xl">🍵</div>
+                        )}
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0 flex flex-col justify-between">
+                        <div className="flex items-start justify-between gap-2">
+                          <h4 className="font-bold text-sm text-primary leading-tight truncate">
                             {item.name}
                           </h4>
-                          
-                          <div className="flex flex-wrap gap-1 mt-2">
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-bold border border-primary/20">
-                              Size {item.size}
-                            </span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#d9e4d4] text-primary/70 font-bold border border-transparent">
-                              {SWEETNESS_OPTIONS.find(o => o.value === item.sweetness)?.label}
-                            </span>
-                            {item.iceOption !== "NORMAL" && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#d9e4d4] text-primary/70 font-bold border border-transparent">
-                                {ICE_OPTIONS.find(o => o.value === item.iceOption)?.label}
-                              </span>
-                            )}
-                            {item.coldwhisk && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-bold border border-blue-200">
-                                Đánh lạnh
-                              </span>
-                            )}
-                          </div>
-                          
-                          <div className="mt-2 space-y-0.5">
-                            {item.selectedPowderId && (
-                                <p className="text-[11px] text-primary/60 font-medium">
-                                Bột: {powders.find(p => p.id === item.selectedPowderId)?.name ?? "Tuỳ chỉnh"}
-                                </p>
-                            )}
-                            {item.selectedOptionIds.length > 0 && (
-                              <p className="text-[11px] text-primary/60 font-medium">
-                                + {item.selectedOptionIds.length} topping
-                              </p>
-                            )}
-                            {item.quantityAddonOptions.length > 0 && (
-                              <p className="text-[11px] text-primary/60 font-medium">
-                                + {item.quantityAddonOptions.reduce((sum, a) => sum + a.quantity, 0)} extra
-                              </p>
-                            )}
-                          </div>
-                          <p className="text-[11px] text-primary font-bold mt-2">Số lượng: {item.quantity}</p>
-                        </div>
-                        <div className="flex flex-col items-end gap-3">
-                          <span className="text-sm font-bold text-primary whitespace-nowrap bg-primary/5 px-2 py-1 rounded-lg">
-                            {(item.clientPriceVnd * item.quantity) / 1000}k
-                          </span>
                           <button
                             onClick={() => removeItem(item.cartId)}
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-red-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-primary/40 hover:text-red-500 hover:bg-red-50 transition-colors -mt-1 -mr-1"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
+                        </div>
+
+                        {/* Explicit Customizations List */}
+                        <div className="mt-1.5 space-y-0.5">
+                          {item.details && item.details.length > 0 ? (
+                            item.details.map((detail, idx) => (
+                              <p key={idx} className="text-[11px] text-primary/60 font-medium flex items-start gap-1">
+                                <span className="text-primary/30 mt-[2px]">•</span> <span>{detail}</span>
+                              </p>
+                            ))
+                          ) : (
+                            <p className="text-[11px] text-primary/60 font-medium">Size {item.size}</p>
+                          )}
+                        </div>
+
+                        {/* Quantity and Price */}
+                        <div className="flex items-center justify-between mt-3">
+                          <p className="text-[11px] text-primary font-bold">Số lượng: {item.quantity}</p>
+                          <span className="text-sm font-bold text-primary bg-primary/5 px-2.5 py-1 rounded-lg">
+                            {(item.clientPriceVnd * item.quantity) / 1000}k
+                          </span>
                         </div>
                       </div>
                     </div>

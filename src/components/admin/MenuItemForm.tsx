@@ -1,225 +1,421 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useForm, type FieldErrors } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import * as z from "zod";
+import { useState, useEffect } from "react";
+import { useForm, Controller } from "react-hook-form";
 import { cn } from "@/src/utils/cn";
+import type { AdminMenuItem } from "@/src/lib/types/menu";
+import type { Powder } from "@/src/lib/types/powder";
 
-const dailySchema = z.object({
-  category: z.literal("daily"),
-  sizes: z.object({
-    M: z.number({ message: "Vui lòng nhập giá" }).int().min(0),
-    L: z.number({ message: "Vui lòng nhập giá" }).int().min(0),
-    XL: z.number({ message: "Vui lòng nhập giá" }).int().min(0),
-  }),
-});
+// ── Form field types (all strings for HTML inputs) ────────────────────────────
+// RHF works with raw string inputs; we parse manually on submit.
 
-const nonDailySchema = z.object({
-  category: z.enum(["seasonal", "recipe"]),
-  price_vnd: z.number({ message: "Vui lòng nhập giá" }).int().min(0),
-});
+interface FormFields {
+  name: string;
+  description: string;
+  category: "latte" | "fusion";
+  is_seasonal: boolean;
+  is_available: boolean;
+  sort_order: string;
+  // Sizes — entered as "cá" units (integer), nullable (empty = not sold)
+  size_m: string;
+  size_l: string;
+  size_xl: string;
+  // Latte only
+  matcha_powder_id: string;
+  // Fusion only
+  default_powder_id: string;
+  base_liquid_note: string;
+  allowed_powder_ids: string[];
+  // Custom gram overrides — unit: gram (g)
+  grams_m: string;
+  grams_l: string;
+  grams_xl: string;
+}
 
-const baseSchema = z.object({
-  name: z.string().min(1, "Vui lòng nhập tên món"),
-  description: z.string().optional(),
-  is_available: z.boolean(),
-  image: z.custom<FileList | File | null>().optional(),
-});
+// ── Props ─────────────────────────────────────────────────────────────────────
 
-const schema = z.discriminatedUnion("category", [dailySchema, nonDailySchema]).and(baseSchema);
-
-type FormValues = z.infer<typeof schema>;
-type DailyFormValues = z.infer<typeof dailySchema> & z.infer<typeof baseSchema>;
-type NonDailyFormValues = z.infer<typeof nonDailySchema> & z.infer<typeof baseSchema>;
+export type MenuItemFormValues = FormFields;
 
 interface MenuItemFormProps {
+  mode: "create" | "edit";
+  defaultValues?: Partial<FormFields>;
+  powders: Powder[];
   onSubmit: (fd: FormData) => Promise<void>;
   isSubmitting: boolean;
 }
 
-/** Form component cho việc tạo/sửa menu item. */
-export default function MenuItemForm({ onSubmit, isSubmitting }: MenuItemFormProps) {
+// ── Helper: build defaultValues from AdminMenuItem ─────────────────────────────
+
+/** Build MenuItemFormValues from an existing AdminMenuItem for edit mode. */
+export function buildDefaultValues(item: AdminMenuItem): MenuItemFormValues {
+  const sizeMap: Record<string, number | null> = {};
+  for (const s of item.sizes) sizeMap[s.size] = s.base_price_vnd;
+  const cpg = item.custom_powder_grams as Record<string, number> | null;
+  return {
+    name: item.name,
+    description: item.description ?? "",
+    category: item.category,
+    is_seasonal: item.is_seasonal,
+    is_available: item.is_available,
+    sort_order: String(item.sort_order),
+    size_m: sizeMap["M"] != null ? String(sizeMap["M"]! / 1000) : "",
+    size_l: sizeMap["L"] != null ? String(sizeMap["L"]! / 1000) : "",
+    size_xl: sizeMap["XL"] != null ? String(sizeMap["XL"]! / 1000) : "",
+    matcha_powder_id: item.matcha_powder_id ?? "",
+    default_powder_id: item.default_powder_id ?? "",
+    base_liquid_note: item.base_liquid_note ?? "",
+    allowed_powder_ids: item.allowed_powder_ids ?? [],
+    grams_m: cpg?.M != null ? String(cpg.M) : "",
+    grams_l: cpg?.L != null ? String(cpg.L) : "",
+    grams_xl: cpg?.XL != null ? String(cpg.XL) : "",
+  };
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+/** Form component cho việc tạo/sửa menu item — Phase 2 schema (latte/fusion). */
+export default function MenuItemForm({
+  mode,
+  defaultValues,
+  powders,
+  onSubmit,
+  isSubmitting,
+}: MenuItemFormProps) {
   const {
     register,
     handleSubmit,
     watch,
-    resetField,
+    control,
+    setValue,
     formState: { errors },
-  } = useForm<FormValues>({
-    resolver: zodResolver(schema),
+  } = useForm<FormFields>({
     defaultValues: {
-      category: "daily",
+      name: "",
+      description: "",
+      category: "latte",
+      is_seasonal: false,
       is_available: true,
+      sort_order: "0",
+      size_m: "",
+      size_l: "",
+      size_xl: "",
+      matcha_powder_id: "",
+      default_powder_id: "",
+      base_liquid_note: "",
+      allowed_powder_ids: [],
+      grams_m: "",
+      grams_l: "",
+      grams_xl: "",
+      ...defaultValues,
     },
   });
 
   const category = watch("category");
+  const defaultPowderId = watch("default_powder_id");
+  const allowedPowderIds = watch("allowed_powder_ids");
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [pendingValues, setPendingValues] = useState<FormFields | null>(null);
 
+  // Tự động bỏ chọn khỏi danh sách swap nếu bột đó được chọn làm default
   useEffect(() => {
-    if (category === "daily") {
-      resetField("price_vnd");
-    } else {
-      resetField("sizes.M");
-      resetField("sizes.L");
-      resetField("sizes.XL");
+    if (defaultPowderId && allowedPowderIds.includes(defaultPowderId)) {
+      setValue("allowed_powder_ids", allowedPowderIds.filter(id => id !== defaultPowderId));
     }
-  }, [category, resetField]);
+  }, [defaultPowderId, allowedPowderIds, setValue]);
 
-  const onFormSubmit = async (values: FormValues) => {
+  // Hiển thị tất cả bột cho Admin, đánh dấu nếu ngưng bán
+  const sortedPowders = [...powders].sort((a, b) => a.name.localeCompare(b.name));
+
+  // Manual parse helpers
+  const parseSize = (v: string): number | null => {
+    const trimmed = v.trim();
+    if (trimmed === "") return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+  };
+
+  const parseGrams = (v: string): number | null => {
+    const trimmed = v.trim();
+    if (trimmed === "") return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+
+  const onFormSubmit = async (values: FormFields) => {
+    setFormError(null);
+
+    // Validate: Latte requires a powder
+    if (values.category === "latte" && mode === "create" && !values.matcha_powder_id) {
+      setFormError("Vui lòng chọn bột matcha cho món Latte.");
+      return;
+    }
+
+    // Validate: At least one size must be provided
+    if (!values.size_m && !values.size_l && !values.size_xl) {
+      setFormError("Vui lòng nhập giá cho ít nhất một size.");
+      return;
+    }
+
+    setPendingValues(values);
+    setShowConfirm(true);
+  };
+
+  const handleConfirmSubmit = async () => {
+    if (!pendingValues) return;
+    const values = pendingValues;
+    setShowConfirm(false);
+
     const fd = new FormData();
-    fd.append("name", values.name);
-    if (values.description) fd.append("description", values.description);
+    fd.append("name", values.name.trim());
+    if (values.description.trim()) fd.append("description", values.description.trim());
     fd.append("category", values.category);
+    fd.append("is_seasonal", String(values.is_seasonal));
     fd.append("is_available", String(values.is_available));
+    fd.append("sort_order", String(Math.max(0, Number(values.sort_order) || 0)));
 
-    if (values.category === "daily") {
-      fd.append(
-        "sizes",
-        JSON.stringify([
-          { size: "M", price_vnd: values.sizes.M * 1000 },
-          { size: "L", price_vnd: values.sizes.L * 1000 },
-          { size: "XL", price_vnd: values.sizes.XL * 1000 },
-        ])
-      );
-    } else {
-      fd.append("price_vnd", String(values.price_vnd * 1000));
+    // Sizes — convert from "cá" units to VND (* 1000)
+    const sizeM = parseSize(values.size_m);
+    const sizeL = parseSize(values.size_l);
+    const sizeXL = parseSize(values.size_xl);
+    fd.append(
+      "sizes",
+      JSON.stringify([
+        { size: "M", base_price_vnd: sizeM != null ? sizeM * 1000 : null },
+        { size: "L", base_price_vnd: sizeL != null ? sizeL * 1000 : null },
+        { size: "XL", base_price_vnd: sizeXL != null ? sizeXL * 1000 : null },
+      ])
+    );
+
+    // Category-specific fields
+    if (values.category === "latte") {
+      if (values.matcha_powder_id) fd.append("matcha_powder_id", values.matcha_powder_id);
+    }
+    if (values.category === "fusion") {
+      if (values.default_powder_id) fd.append("default_powder_id", values.default_powder_id);
+      if (values.base_liquid_note.trim()) fd.append("base_liquid_note", values.base_liquid_note.trim());
+      if (values.allowed_powder_ids) fd.append("allowed_powder_ids", JSON.stringify(values.allowed_powder_ids));
     }
 
-    // Handle image file (RHF returns FileList for file inputs)
-    if (values.image) {
-      let file: File | null = null;
-      if (values.image instanceof FileList && values.image.length > 0) {
-        file = values.image[0];
-      } else if (values.image instanceof File) {
-        file = values.image;
-      }
-      
-      if (file) {
-        fd.append("image", file);
-      }
-    }
+    // Custom gram overrides — only non-empty values
+    const gmM = parseGrams(values.grams_m);
+    const gmL = parseGrams(values.grams_l);
+    const gmXL = parseGrams(values.grams_xl);
+    const cpg: Record<string, number> = {};
+    if (gmM != null) cpg.M = gmM;
+    if (gmL != null) cpg.L = gmL;
+    if (gmXL != null) cpg.XL = gmXL;
+    if (Object.keys(cpg).length > 0) fd.append("custom_powder_grams", JSON.stringify(cpg));
+
+    if (imageFile) fd.append("image", imageFile);
 
     await onSubmit(fd);
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setImagePreview(URL.createObjectURL(file));
-    } else {
+    const file = e.target.files?.[0] ?? null;
+    if (file && file.size > 5 * 1024 * 1024) {
+      setFormError("Ảnh quá lớn! Vui lòng chọn ảnh nhỏ hơn 5MB.");
+      setImageFile(null);
       setImagePreview(null);
+      e.target.value = "";
+      return;
     }
+    setFormError(null);
+    setImageFile(file);
+    setImagePreview(file ? URL.createObjectURL(file) : null);
   };
 
-  const inputClass = "rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1";
+  const inputClass =
+    "rounded-xl border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary/40 mt-1 disabled:opacity-50 disabled:cursor-not-allowed";
+  const labelClass = "text-sm font-medium text-foreground";
+  const errorClass = "text-xs text-destructive mt-1";
 
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
+      {formError && (
+        <div className="rounded-xl bg-destructive/10 border border-destructive/20 px-3 py-2 text-sm text-destructive">
+          {formError}
+        </div>
+      )}
+
+      {/* Tên món */}
       <div>
-        <label className="text-sm font-medium text-foreground">Tên món</label>
+        <label className={labelClass}>Tên món *</label>
         <input
-          {...register("name")}
+          {...register("name", { required: "Vui lòng nhập tên món" })}
           placeholder="Ví dụ: Matcha Latte"
           className={inputClass}
         />
-        {errors.name && <p className="text-xs text-destructive mt-1">{errors.name.message}</p>}
+        {errors.name && <p className={errorClass}>{errors.name.message}</p>}
       </div>
 
+      {/* Mô tả */}
       <div>
-        <label className="text-sm font-medium text-foreground">Mô tả</label>
+        <label className={labelClass}>Mô tả</label>
         <textarea
           {...register("description")}
           placeholder="Mô tả ngắn về món"
           className={cn(inputClass, "min-h-[60px] resize-none")}
         />
-        {errors.description && <p className="text-xs text-destructive mt-1">{errors.description.message}</p>}
       </div>
 
-      <div>
-        <label className="text-sm font-medium text-foreground">Danh mục</label>
-        <select {...register("category")} className={inputClass}>
-          <option value="daily">daily</option>
-          <option value="seasonal">seasonal</option>
-          <option value="recipe">recipe</option>
-        </select>
-        {errors.category && <p className="text-xs text-destructive mt-1">{errors.category.message}</p>}
-      </div>
-
-      {category === "daily" ? (
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="text-xs font-medium text-foreground">Size M (cá 🐟)</label>
-            <input
-              type="number"
-              {...register("sizes.M", { valueAsNumber: true })}
-              placeholder="0"
-              className={inputClass}
-            />
-            {(errors as FieldErrors<DailyFormValues>).sizes?.M && (
-              <p className="text-xs text-destructive mt-1">
-                {(errors as FieldErrors<DailyFormValues>).sizes?.M?.message}
-              </p>
-            )}
-          </div>
-          <div>
-            <label className="text-xs font-medium text-foreground">Size L (cá 🐟)</label>
-            <input
-              type="number"
-              {...register("sizes.L", { valueAsNumber: true })}
-              placeholder="0"
-              className={inputClass}
-            />
-            {(errors as FieldErrors<DailyFormValues>).sizes?.L && (
-              <p className="text-xs text-destructive mt-1">
-                {(errors as FieldErrors<DailyFormValues>).sizes?.L?.message}
-              </p>
-            )}
-          </div>
-          <div>
-            <label className="text-xs font-medium text-foreground">Size XL (cá 🐟)</label>
-            <input
-              type="number"
-              {...register("sizes.XL", { valueAsNumber: true })}
-              placeholder="0"
-              className={inputClass}
-            />
-            {(errors as FieldErrors<DailyFormValues>).sizes?.XL && (
-              <p className="text-xs text-destructive mt-1">
-                {(errors as FieldErrors<DailyFormValues>).sizes?.XL?.message}
-              </p>
-            )}
-          </div>
-        </div>
-      ) : (
+      {/* Danh mục — ẩn nếu edit Latte */}
+      {!(mode === "edit" && category === "latte") && (
         <div>
-          <label className="text-sm font-medium text-foreground">Giá (cá 🐟)</label>
-          <input
-            type="number"
-            {...register("price_vnd", { valueAsNumber: true })}
-            placeholder="0"
-            className={inputClass}
-          />
-          {(errors as FieldErrors<NonDailyFormValues>).price_vnd && (
-            <p className="text-xs text-destructive mt-1">
-              {(errors as FieldErrors<NonDailyFormValues>).price_vnd?.message}
+          <label className={labelClass}>Danh mục *</label>
+          <select {...register("category")} disabled={mode === "edit"} className={inputClass}>
+            <option value="latte">Latte</option>
+            <option value="fusion">Fusion</option>
+          </select>
+          {mode === "edit" && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Danh mục không thể thay đổi sau khi tạo.
             </p>
           )}
         </div>
       )}
 
+      {/* Giá — 3 sizes (nhập bằng cá 🐟, để trống = không bán size đó) */}
       <div>
-        <label className="text-sm font-medium text-foreground">Ảnh sản phẩm</label>
+        <label className={labelClass}>
+          Giá cơ sở (🐟 cá){" "}
+          <span className="text-muted-foreground font-normal">— để trống = không bán size đó</span>
+        </label>
+        <div className="grid grid-cols-3 gap-3 mt-1">
+          {(["M", "L", "XL"] as const).map((size) => {
+            const field = `size_${size.toLowerCase()}` as "size_m" | "size_l" | "size_xl";
+            return (
+              <div key={size}>
+                <label className="text-xs text-muted-foreground">Size {size}</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  {...register(field)}
+                  placeholder="—"
+                  className={inputClass}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Latte only: Bột matcha */}
+      {category === "latte" && (
+        <div>
+          <label className={labelClass}>Bột matcha *</label>
+          {mode === "edit" ? (
+            <div className="mt-1 px-3 py-2 bg-secondary/20 border border-border rounded-xl text-sm text-foreground">
+              {sortedPowders.find(p => p.id === watch("matcha_powder_id"))?.name || "Đang tải..."}
+              <p className="text-[10px] text-muted-foreground mt-0.5">Không thể đổi bột sau khi tạo (neo giá Fusion).</p>
+            </div>
+          ) : (
+            <select {...register("matcha_powder_id")} className={inputClass}>
+              <option value="">— Chọn bột —</option>
+              {sortedPowders.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.type !== "NONE" ? ` (${p.type})` : ""}
+                  {!p.is_available ? " (Ngưng bán)" : ""}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      {/* Fusion only */}
+      {category === "fusion" && (
+        <>
+          <div>
+            <label className={labelClass}>Bột mặc định</label>
+            <select {...register("default_powder_id")} className={inputClass}>
+              <option value="">— Tự động (Meyumi → Hana → MH-3 → rẻ nhất) —</option>
+              {sortedPowders.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.type !== "NONE" ? ` (${p.type})` : ""}
+                  {!p.is_available ? " (Ngưng bán)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Các bột cho phép swap</label>
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {sortedPowders
+                .filter((p) => p.id !== defaultPowderId)
+                .map((p) => (
+                  <label
+                    key={p.id}
+                    className={cn("flex items-center space-x-2 text-sm", !p.is_available && "opacity-60")}
+                  >
+                    <input
+                      type="checkbox"
+                      value={p.id}
+                      {...register("allowed_powder_ids")}
+                      className="rounded border-border text-primary focus:ring-primary/40"
+                    />
+                    <span>
+                      {p.name}
+                      {!p.is_available && <span className="text-[10px] ml-1 opacity-70">(Ngưng bán)</span>}
+                    </span>
+                  </label>
+                ))}
+            </div>
+          </div>
+          <div>
+            <label className={labelClass}>Base liquid</label>
+            <input
+              {...register("base_liquid_note")}
+              placeholder="Ví dụ: Nước ép cam, Milk foam"
+              className={inputClass}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Custom gram override — label unit: gram (g) */}
+      <div>
+        <label className={labelClass}>
+          Gram bột tuỳ chỉnh{" "}
+          <span className="text-muted-foreground font-normal">
+            gram (g) — để trống = dùng cấu hình hệ thống
+          </span>
+        </label>
+        <div className="grid grid-cols-3 gap-3 mt-1">
+          {(["M", "L", "XL"] as const).map((size) => {
+            const field = `grams_${size.toLowerCase()}` as "grams_m" | "grams_l" | "grams_xl";
+            return (
+              <div key={size}>
+                <label className="text-xs text-muted-foreground">Size {size} (g)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  {...register(field)}
+                  placeholder="—"
+                  className={inputClass}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Ảnh */}
+      <div>
+        <label className={labelClass}>Ảnh sản phẩm</label>
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp"
+          onChange={handleImageChange}
           className="mt-1 block w-full text-sm text-muted-foreground file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:bg-secondary/40 file:text-sm file:font-medium hover:file:bg-secondary/60"
-          {...register("image", {
-            onChange: handleImageChange,
-          })}
         />
-        {errors.image && <p className="text-xs text-destructive mt-1">{errors.image.message as string}</p>}
         {imagePreview && (
           <img
             src={imagePreview}
@@ -229,39 +425,97 @@ export default function MenuItemForm({ onSubmit, isSubmitting }: MenuItemFormPro
         )}
       </div>
 
-      <div className="flex items-center justify-between bg-secondary/30 rounded-xl px-3 py-2">
-        <label className="text-sm font-medium text-foreground">Trạng thái bán</label>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={watch("is_available")}
-          onClick={() => {
-            const current = watch("is_available");
-            resetField("is_available", { defaultValue: !current });
-          }}
-          className={cn(
-            "relative inline-flex h-5 w-9 rounded-full transition",
-            watch("is_available") ? "bg-primary" : "bg-border"
-          )}
-        >
-          <span
-            className={cn(
-              "block h-4 w-4 rounded-full bg-white shadow transition-transform m-0.5",
-              watch("is_available") ? "translate-x-4" : "translate-x-0"
-            )}
-          />
-        </button>
+      {/* Toggles */}
+      <div className="space-y-2">
+        {(
+          [
+            { name: "is_seasonal", label: "Theo mùa" },
+            { name: "is_available", label: "Đang bán" },
+          ] as const
+        ).map(({ name, label }) => (
+          <div
+            key={name}
+            className="flex items-center justify-between bg-secondary/30 rounded-xl px-3 py-2"
+          >
+            <label className={labelClass}>{label}</label>
+            <Controller
+              name={name}
+              control={control}
+              render={({ field }) => (
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={field.value}
+                  onClick={() => field.onChange(!field.value)}
+                  className={cn(
+                    "relative inline-flex h-5 w-9 rounded-full transition",
+                    field.value ? "bg-primary" : "bg-border"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "block h-4 w-4 rounded-full bg-white shadow transition-transform m-0.5",
+                      field.value ? "translate-x-4" : "translate-x-0"
+                    )}
+                  />
+                </button>
+              )}
+            />
+          </div>
+        ))}
       </div>
 
+      {/* Sort order */}
+      <div>
+        <label className={labelClass}>Thứ tự hiển thị</label>
+        <input
+          type="number"
+          min="0"
+          step="1"
+          {...register("sort_order")}
+          placeholder="0"
+          className={inputClass}
+        />
+      </div>
+
+      {/* Submit */}
       <div className="flex gap-2 justify-end pt-2">
         <button
           type="submit"
           disabled={isSubmitting}
           className="px-6 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition disabled:opacity-50"
         >
-          {isSubmitting ? "Đang xử lý..." : "Thêm món"}
+          {isSubmitting ? "Đang xử lý..." : mode === "create" ? "Thêm món" : "Cập nhật"}
         </button>
       </div>
+
+      {/* Confirm Dialog */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="bg-background rounded-3xl p-6 max-w-sm w-full shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="font-serif font-bold text-xl text-foreground mb-2">Xác nhận</h3>
+            <p className="text-sm text-muted-foreground mb-6">
+              Bạn có chắc chắn muốn {mode === "create" ? "thêm món này" : "cập nhật thay đổi"} không?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowConfirm(false)}
+                className="px-4 py-2 rounded-xl font-medium text-sm text-foreground hover:bg-secondary transition-colors"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSubmit}
+                className="px-5 py-2 rounded-xl bg-primary text-primary-foreground font-medium text-sm hover:bg-primary/90 transition-colors shadow-sm"
+              >
+                Đồng ý
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

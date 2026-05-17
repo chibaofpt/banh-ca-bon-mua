@@ -21,6 +21,9 @@ interface ProductModalProps {
 function OptionCard({
   label, sub, isActive, onClick,
 }: { label: string; sub?: string; isActive: boolean; onClick: () => void }) {
+  const isPriceAddition = sub?.startsWith("+");
+  const isSizePrice = sub && sub.endsWith("k") && !sub.startsWith("+") && !sub.startsWith("-");
+
   return (
     <button
       onClick={onClick}
@@ -30,7 +33,20 @@ function OptionCard({
       )}
     >
       <span className={cn("text-xs font-bold leading-tight", isActive ? "text-primary" : "text-primary/70")}>{label}</span>
-      {sub && <span className={cn("text-[10px] font-medium mt-0.5", isActive ? "text-primary/60" : "text-primary/40")}>{sub}</span>}
+      {sub && (
+        <span
+          className={cn(
+            "text-[10px] mt-0.5",
+            isSizePrice
+              ? "text-xs text-black"
+              : isPriceAddition
+                ? "text-[#df5e5e] font-semibold"
+                : cn("font-medium", isActive ? "text-primary/60" : "text-primary/40")
+          )}
+        >
+          {sub}
+        </span>
+      )}
     </button>
   );
 }
@@ -70,7 +86,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
   const quantityGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "QUANTITY"), [item.addon_groups]);
   const selectorGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "SELECTOR"), [item.addon_groups]);
   const toggleGroups = useMemo(() => item.addon_groups.filter((g) => g.type === "TOGGLE"), [item.addon_groups]);
-  
+
   const matchaSelectorGroups = useMemo(() => selectorGroups.filter(g => g.name.toLowerCase().includes("matcha")), [selectorGroups]);
   const otherSelectorGroups = useMemo(() => selectorGroups.filter(g => !g.name.toLowerCase().includes("matcha")), [selectorGroups]);
   const defaultMilkId = item.milk_types?.find(m => m.is_default)?.id ?? "";
@@ -157,6 +173,65 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
         const qty = quantityMap[g.id] ?? 0;
         return qty > 0 && g.options[0] ? [{ option_id: g.options[0].id, quantity: qty }] : [];
       });
+
+    const details: string[] = [];
+    details.push(`Size ${selectedSize}`);
+    
+    const sweetnessLabel = SWEETNESS_OPTIONS.find(o => o.value === sweetness)?.label;
+    if (sweetnessLabel) details.push(sweetnessLabel);
+    
+    let hasDaDua = false;
+    for (const group of item.addon_groups) {
+      if (group.name.toLowerCase().includes("đá dừa")) {
+        if (group.options.some(o => selectedOptionIds.includes(o.id) && !o.is_default)) {
+          hasDaDua = true;
+        }
+      }
+    }
+    const iceLabel = ICE_OPTIONS.find(o => o.value === iceOption)?.label;
+    if (hasDaDua) {
+      details.push(iceOption !== "NORMAL" ? `${iceLabel} (Đá dừa)` : "Đá dừa");
+    } else if (iceOption !== "NORMAL" && iceLabel) {
+      details.push(`Đá: ${iceLabel}`);
+    }
+    
+    if (coldwhisk) details.push("Đánh lạnh foam");
+
+    if (isLatte && selectedMilkId !== defaultMilkId) {
+      const milk = item.milk_types?.find(m => m.id === selectedMilkId);
+      if (milk) details.push(`Sữa: ${milk.name}`);
+    }
+
+    let extraMatchaStr = "";
+    for (const group of item.addon_groups) {
+      if (group.name.toLowerCase().includes("matcha") && group.type === "SELECTOR") {
+        const opt = group.options.find(o => selectedOptionIds.includes(o.id) && !o.is_default);
+        if (opt) extraMatchaStr = ` ${opt.label}`;
+      }
+    }
+    const powderName = activePowder?.name;
+    if (powderName) {
+      details.push(`Bột: ${powderName}${extraMatchaStr}`);
+    }
+
+    for (const group of item.addon_groups) {
+      const isMatcha = group.name.toLowerCase().includes("matcha");
+      const isDaDua = group.name.toLowerCase().includes("đá dừa");
+      if (isMatcha || isDaDua) continue;
+
+      if (group.type === "QUANTITY") {
+        const qty = quantityMap[group.id] ?? 0;
+        if (qty > 0) details.push(`${qty}x ${group.name}`);
+      } else {
+        const selectedGroupOptions = group.options.filter(o => selectedOptionIds.includes(o.id) && !o.is_default);
+        for (const opt of selectedGroupOptions) {
+           details.push(opt.label);
+        }
+      }
+    }
+
+    if (note.trim()) details.push(`Ghi chú: ${note.trim()}`);
+
     addItem({
       menuItemId: item.id, name: item.name, category: item.category, imageUrl: item.image_url,
       size: selectedSize, unitPrice: currentPriceContext.unitPrice, quantity, sweetness, iceOption, coldwhisk,
@@ -164,6 +239,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
       selectedPowderId: isLatte ? undefined : selectedPowderId,
       selectedMilkTypeId: isLatte ? selectedMilkId : undefined,
       clientPriceVnd: currentPriceContext.unitPrice,
+      details,
     });
     onClose();
   };
@@ -401,7 +477,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
           {matchaSelectorGroups.map((group) => (
             <div key={group.id} className="mt-7">
               <SectionLabel text={group.name} />
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 {group.options.filter(o => !o.is_default).map((opt) => {
                   const defaultOpt = group.options.find(o => o.is_default);
                   const price = ceilTo1000(opt.gram_value != null ? opt.gram_value * activePowderPricePerGram : opt.price_vnd);
@@ -428,7 +504,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
             const rawPricePerQty = opt.gram_value != null
               ? opt.gram_value * activePowderPricePerGram
               : opt.price_vnd;
-            
+
             // Build the string: "1g: +Xk, 2g: +Yk, 3g: +Zk..." up to 3 items max.
             const listLimit = Math.min(3, max);
             const pricesStr = Array.from({ length: listLimit }).map((_, i) => {
@@ -443,7 +519,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
                 <div className="flex items-center justify-between bg-white rounded-2xl border-2 border-border px-5 py-4">
                   <div>
                     <p className="text-xs font-bold text-primary">{group.name}</p>
-                    <p className="text-[11px] text-primary/50 mt-0.5 font-medium">
+                    <p className={cn("text-[10px] mt-0.5", rawPricePerQty > 0 ? "text-[#df5e5e] font-semibold" : "text-primary/50 font-medium")}>
                       {rawPricePerQty > 0 ? pricesStr : "Miễn phí"}
                     </p>
                   </div>
@@ -454,7 +530,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
                     >
                       <Minus className="w-3 h-3 text-primary" />
                     </button>
-                    <span className="text-sm font-bold w-4 text-center text-primary">{qty}</span>
+                    <span className="text-base font-bold w-5 text-center text-primary">{qty}</span>
                     <button
                       onClick={() => setQuantityMap((p) => ({ ...p, [group.id]: Math.min(max, qty + 1) }))}
                       className="w-6 h-6 rounded-full bg-white/60 flex items-center justify-center hover:bg-white transition-colors"
@@ -473,7 +549,7 @@ const BaseModal: React.FC<ProductModalProps> = ({ item, latteItems, onClose }) =
             <textarea
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              placeholder="Dặn dò thêm cho bếp..."
+              placeholder="Dặn dò thêm cho quán..."
               className="w-full rounded-2xl border-2 border-border bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 min-h-[72px] resize-none"
             />
           </div>

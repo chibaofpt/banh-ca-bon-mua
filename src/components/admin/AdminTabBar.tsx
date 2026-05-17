@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ClipboardList, QrCode, Package, Gift, Receipt } from "lucide-react";
+import { ClipboardList, QrCode, Package, Gift, Receipt, Leaf } from "lucide-react";
 import { cn } from "@/src/utils/cn";
 import type { Role } from "@/src/lib/types/user";
 import * as authService from "@/src/services/authService";
@@ -19,6 +19,7 @@ const TABS: Tab[] = [
   { to: "/staff/orders-list", label: "Đơn hàng", icon: Receipt, roles: ["ADMIN", "STAFF"] },
   { to: "/staff/scan", label: "Quét QR", icon: QrCode, roles: ["ADMIN", "STAFF"] },
   { to: "/admin/menu", label: "Sản phẩm", icon: Package, roles: ["ADMIN"] },
+  { to: "/admin/powders", label: "Bột Matcha", icon: Leaf, roles: ["ADMIN"] },
   { to: "/admin/voucher-packages", label: "Điểm & Voucher", icon: Gift, roles: ["ADMIN"] },
 ];
 
@@ -93,6 +94,7 @@ export default function AdminTabBar({ userName, userRole }: AdminTabBarProps) {
             tabs.length === 3 && "grid-cols-3",
             tabs.length === 4 && "grid-cols-4",
             tabs.length === 5 && "grid-cols-5",
+            tabs.length === 6 && "grid-cols-6",
           )}
         >
           {tabs.map(({ to, label, icon: Icon }) => {

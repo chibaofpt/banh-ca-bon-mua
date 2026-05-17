@@ -31,7 +31,7 @@ export default function MenuPage() {
   const router = useRouter();
   const [data, setData] = useState<MenuData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<TabId>('seasonal');
+  const [activeTab, setActiveTab] = useState<TabId>('latte');
 
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
 

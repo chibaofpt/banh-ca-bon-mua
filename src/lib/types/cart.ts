@@ -38,4 +38,6 @@ export interface CartItem {
   clientPriceVnd: number;
   /** Set when this item was added via a PRODUCT voucher scan (unit price = 0). */
   productVoucherId?: string;
+  /** Explicit list of human-readable customization details to display in the cart. */
+  details?: string[];
 }

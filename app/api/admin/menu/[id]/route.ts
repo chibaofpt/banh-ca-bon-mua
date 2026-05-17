@@ -5,6 +5,8 @@ import { updateMenuSchema } from "@/lib/validations/menu";
 import { uploadMenuImage } from "@/lib/storage";
 import type { Prisma } from "@prisma/client";
 
+export const dynamic = "force-dynamic";
+
 // ── Shared include + helper (mirrors route.ts) ───────────────────────────────
 
 type MenuItemWithRelations = Prisma.MenuItemGetPayload<{

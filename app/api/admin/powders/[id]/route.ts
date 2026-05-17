@@ -3,6 +3,8 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { updatePowderSchema } from "@/lib/validations/powder";
 
+export const dynamic = "force-dynamic";
+
 export async function PUT(req: Request, { params }: { params: { id: string } }) {
   const session = await getSession();
   if (!session || session.role !== "ADMIN") {

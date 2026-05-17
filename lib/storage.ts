@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 let supabase: SupabaseClient | null = null;
 
 /** Returns a singleton instance of the Supabase admin client for storage operations. */
+// Trigger new deployment for debugging
 function getSupabase(): SupabaseClient {
   if (supabase) return supabase;
 
